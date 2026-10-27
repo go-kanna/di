@@ -2,6 +2,7 @@ package gen
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"go/token"
 	"go/types"
@@ -114,15 +115,53 @@ func Providers(pkg *packages.Package) []string {
 // Lookup is lookup of the type expr names in pkg, the functions it returns
 // spelled by their names.
 func Lookup(pkg *packages.Package, expr string) ([]string, error) {
-	tv, err := types.Eval(pkg.Fset, pkg.Types, token.NoPos, expr)
+	t, err := evalType(pkg, expr)
 	if err != nil {
-		return nil, fmt.Errorf("eval %s: %w", expr, err)
+		return nil, err
 	}
 	var names []string
-	for _, p := range newIndex(pkg.Fset).lookup(pkg.Types, tv.Type) {
+	for _, p := range newIndex(pkg.Fset).lookup(pkg.Types, t) {
 		names = append(names, p.fn.Name())
 	}
 	return names, nil
+}
+
+// Resolve is resolve of written, a with= ref, for a value of the type expr
+// names in pkg, with pkg, the packages it imports, and others as those a with=
+// may name. It spells the provider found as "<path>.<name>", and follows the
+// message of an error with its hint after "; ".
+func Resolve(pkg *packages.Package, expr, written string, others ...*packages.Package) (string, error) {
+	t, err := evalType(pkg, expr)
+	if err != nil {
+		return "", err
+	}
+	r, err := parseRef(written)
+	if err != nil {
+		return "", err
+	}
+
+	pkgs := append([]*types.Package{pkg.Types}, pkg.Types.Imports()...)
+	for _, o := range others {
+		pkgs = append(pkgs, o.Types)
+	}
+	p, err := newIndex(pkg.Fset).resolve(r, t, pkg.Types, pkgs)
+	if e, ok := errors.AsType[*refError](err); ok && e.hint != "" {
+		return "", fmt.Errorf("%s; %s", e.msg, e.hint)
+	} else if err != nil {
+		return "", err
+	}
+	return p.fn.Pkg().Path() + "." + p.fn.Name(), nil
+}
+
+// evalType reads the type expr names in the scope of the first file of pkg, so
+// that its imports are in scope.
+func evalType(pkg *packages.Package, expr string) (types.Type, error) {
+	file := pkg.Syntax[0]
+	tv, err := types.Eval(pkg.Fset, pkg.Types, file.Decls[len(file.Decls)-1].Pos(), expr)
+	if err != nil {
+		return nil, fmt.Errorf("eval %s: %w", expr, err)
+	}
+	return tv.Type, nil
 }
 
 // spell writes t as ParseTag does, with param as the name of an argument.
