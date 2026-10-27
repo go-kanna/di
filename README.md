@@ -137,7 +137,8 @@ code that calls it.
 
 ## Providers
 
-A provider is a top-level function whose first result is a named type, a pointer to one, or an interface:
+A provider is a top-level function whose first result is a type declared in a package — a struct, an interface, or
+any other named type — or a pointer to one:
 
 | Results            | The constructor                                    |
 |--------------------|----------------------------------------------------|
@@ -147,7 +148,10 @@ A provider is a top-level function whose first result is a named type, a pointer
 | `T, func(), error` | both                                               |
 
 A variadic parameter is left empty. A provider is called once per constructor, and everything that needs its result
-shares it.
+shares it. A `string` or a `[]byte` is never looked up, so that a function returning one for its own reasons is not
+taken for a provider; give such a value a type of its own, such as `type DSN string`, or take it with `di:"arg"`. A must
+variant beside the function it wraps, `MustNewDeps` beside `NewDeps`, is passed over for that function, so that the
+error reaches the constructor instead of a panic.
 
 For each type it needs, kanna-di takes the first of these that has one:
 

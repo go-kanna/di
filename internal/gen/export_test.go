@@ -1,9 +1,13 @@
 package gen
 
 import (
+	"cmp"
 	"fmt"
 	"go/token"
+	"go/types"
 	"reflect"
+	"slices"
+	"strings"
 
 	"github.com/go-kanna/internal/packages"
 	"github.com/go-kanna/internal/scan"
@@ -64,6 +68,61 @@ func Containers(fset *token.FileSet, pkgs []*packages.Package) ([]Container, []s
 		diags[i] = d.String()
 	}
 	return spelled, diags
+}
+
+// Providers is every function of pkg that lookup can find, in the order they
+// are declared, each spelled as its signature would be with the variadic
+// parameter left out, such as "openDB(Config) *DB, func(), error", or as
+// "openDB: <why it is bad>", and followed by " (test)" for one declared in a
+// test file.
+func Providers(pkg *packages.Package) []string {
+	x := newIndex(pkg.Fset)
+	var all []provider
+	for _, ps := range x.read(pkg.Types) {
+		all = append(all, ps...)
+	}
+	slices.SortFunc(all, func(a, b provider) int {
+		return cmp.Or(cmp.Compare(a.pos.Filename, b.pos.Filename), cmp.Compare(a.pos.Offset, b.pos.Offset))
+	})
+
+	spelled := make([]string, len(all))
+	for i, p := range all {
+		s := p.fn.Name()
+		if p.bad != "" {
+			s += ": " + p.bad
+		} else {
+			params := make([]string, len(p.params))
+			for j, t := range p.params {
+				params[j] = typeString(t, pkg.Types)
+			}
+			s += "(" + strings.Join(params, ", ") + ") " + typeString(p.result, pkg.Types)
+			if p.cleanup {
+				s += ", func()"
+			}
+			if p.errs {
+				s += ", error"
+			}
+		}
+		if p.test {
+			s += " (test)"
+		}
+		spelled[i] = s
+	}
+	return spelled
+}
+
+// Lookup is lookup of the type expr names in pkg, the functions it returns
+// spelled by their names.
+func Lookup(pkg *packages.Package, expr string) ([]string, error) {
+	tv, err := types.Eval(pkg.Fset, pkg.Types, token.NoPos, expr)
+	if err != nil {
+		return nil, fmt.Errorf("eval %s: %w", expr, err)
+	}
+	var names []string
+	for _, p := range newIndex(pkg.Fset).lookup(pkg.Types, tv.Type) {
+		names = append(names, p.fn.Name())
+	}
+	return names, nil
 }
 
 // spell writes t as ParseTag does, with param as the name of an argument.
