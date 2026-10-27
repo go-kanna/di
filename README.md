@@ -198,9 +198,9 @@ The provider's result only has to be assignable to the type, which is how an int
 named field, `with=` also stores the value; on `_`, it only chooses.
 
 ```console
-./server.go:9:2: error: package postgres has no function NewUserRepositry
+./server.go:9:2: error: package postgres has no function NewUserRepositry (field _)
   did you mean NewUserRepository?
-./server.go:9:2: error: postgres.NewOrderRepository returns *postgres.OrderRepository, which does not implement user.Repository (missing method Find)
+./server.go:9:2: error: postgres.NewOrderRepository returns *postgres.OrderRepository, which does not implement user.Repository (missing method Find) (field _)
 ```
 
 ## Containers

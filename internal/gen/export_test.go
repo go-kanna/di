@@ -153,6 +153,104 @@ func Resolve(pkg *packages.Package, expr, written string, others ...*packages.Pa
 	return p.fn.Pkg().Path() + "." + p.fn.Name(), nil
 }
 
+// Plans plans the containers of pkgs, each spelled out by describe and keyed by
+// the struct's name, with the diagnostics as strings. A package is part of the
+// user's module when its import path is module or starts with module and a
+// slash, and every such package of pkgs is one a with= may name.
+func Plans(fset *token.FileSet, pkgs []*packages.Package, module string) (map[string][]string, []string) {
+	local := func(p *types.Package) bool {
+		return p.Path() == module || strings.HasPrefix(p.Path(), module+"/")
+	}
+	w := &world{x: newIndex(fset), local: local}
+	for _, p := range pkgs {
+		if local(p.Types) {
+			w.refs = append(w.refs, p.Types)
+		}
+	}
+
+	cs, ds := containers(fset, scan.Structs(pkgs))
+	plans := make(map[string][]string)
+	for _, c := range cs {
+		p, pds := planOf(w, c)
+		ds = append(ds, pds...)
+		plans[c.Name] = describe(p)
+	}
+
+	diags := make([]string, len(ds))
+	for i, d := range ds {
+		diags[i] = d.String()
+	}
+	return plans, diags
+}
+
+// describe spells p out a line for each call, between its signature and the
+// struct it returns:
+//
+//	newServer() (*server, func(), error)
+//	cfg := config.Load() error
+//	db := openDB(cfg) cleanup error
+//	server{users: users}
+//
+// Names are made unique as emit would, by a number from 2.
+func describe(p plan) []string {
+	own := p.c.Named.Obj().Pkg()
+	seen := make(map[string]int)
+	unique := func(n string) string {
+		if seen[n]++; seen[n] > 1 {
+			return fmt.Sprintf("%s%d", n, seen[n])
+		}
+		return n
+	}
+
+	params := make([]string, len(p.params))
+	for i, prm := range p.params {
+		params[i] = unique(prm.name) + " " + typeString(prm.typ, own)
+	}
+	results := []string{typeString(p.c.returns, own)}
+	if p.cleanup {
+		results = append(results, "func()")
+	}
+	if p.errs {
+		results = append(results, "error")
+	}
+	sig := p.c.ctor + "(" + strings.Join(params, ", ") + ") " + strings.Join(results, ", ")
+	if len(results) > 1 {
+		sig = p.c.ctor + "(" + strings.Join(params, ", ") + ") (" + strings.Join(results, ", ") + ")"
+	}
+	lines := []string{sig}
+
+	names := make([]string, len(p.steps))
+	for i, s := range p.steps {
+		if s.param >= 0 {
+			names[i] = strings.Fields(params[s.param])[0]
+			continue
+		}
+		names[i] = unique(s.name)
+		args := make([]string, len(s.args))
+		for j, a := range s.args {
+			args[j] = names[a]
+		}
+		fn := s.p.fn.Name()
+		if s.p.fn.Pkg().Path() != own.Path() {
+			fn = s.p.fn.Pkg().Name() + "." + fn
+		}
+		line := names[i] + " := " + fn + "(" + strings.Join(args, ", ") + ")"
+		if s.p.cleanup {
+			line += " cleanup"
+		}
+		if s.p.errs {
+			line += " error"
+		}
+		lines = append(lines, line)
+	}
+
+	fields := make([]string, len(p.fields))
+	for i, a := range p.fields {
+		fields[i] = a.field + ": " + names[a.step]
+	}
+	return append(lines, p.c.Name+"{"+strings.Join(fields, ", ")+"}")
+}
+
 // evalType reads the type expr names in the scope of the first file of pkg, so
 // that its imports are in scope.
 func evalType(pkg *packages.Package, expr string) (types.Type, error) {
