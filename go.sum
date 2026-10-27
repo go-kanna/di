@@ -1,5 +1,5 @@
-github.com/go-kanna/internal v0.0.2 h1:pTobO+R+iLVmITsGLef4mNmnY5UJgm+xmkk2ZpHP+KU=
-github.com/go-kanna/internal v0.0.2/go.mod h1:Df477EkeFmw5w4hFNoBGUZfZJfgKJnaemuReERxK7to=
+github.com/go-kanna/internal v0.0.3-0.20261027080454-da0394ee21d5 h1:3653eW7rNRaghrpiNN47ylJ/QqH3KOyFg4TYY5zWGpY=
+github.com/go-kanna/internal v0.0.3-0.20261027080454-da0394ee21d5/go.mod h1:Df477EkeFmw5w4hFNoBGUZfZJfgKJnaemuReERxK7to=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
 golang.org/x/mod v0.42.0 h1:ICeL3t2L30ljSPHHxDnR4fqVcBt/zR2zJAb9juavmQg=
