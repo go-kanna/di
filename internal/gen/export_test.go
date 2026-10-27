@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"maps"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 
+	"github.com/go-kanna/internal/diag"
+	"github.com/go-kanna/internal/output"
 	"github.com/go-kanna/internal/packages"
 	"github.com/go-kanna/internal/scan"
 )
@@ -158,6 +162,38 @@ func Resolve(pkg *packages.Package, expr, written string, others ...*packages.Pa
 // user's module when its import path is module or starts with module and a
 // slash, and every such package of pkgs is one a with= may name.
 func Plans(fset *token.FileSet, pkgs []*packages.Package, module string) (map[string][]string, []string) {
+	planned, ds := planAll(fset, pkgs, module)
+	spelled := make(map[string][]string, len(planned))
+	for _, p := range planned {
+		spelled[p.c.Name] = describe(p)
+	}
+	return spelled, diagStrings(ds)
+}
+
+// Emit plans the containers of pkgs as Plans does, and renders the
+// constructors of those in the files of pkg, its tests' aside, as the
+// di_gen.go of pkg.
+func Emit(fset *token.FileSet, pkgs []*packages.Package, module string, pkg *packages.Package) ([]byte, []string) {
+	planned, ds := planAll(fset, pkgs, module)
+	var mine []plan
+	for _, p := range planned {
+		if p.c.PkgPath == pkg.PkgPath && !p.c.test {
+			mine = append(mine, p)
+		}
+	}
+
+	dir := filepath.Dir(pkg.GoFiles[0])
+	declared := slices.Sorted(maps.Keys(output.DeclaredNames(dir, outputFile, pkg.Name)))
+	src, err := emit(pkg.PkgPath, pkg.Name, mine, declared).Bytes()
+	if err != nil {
+		ds = append(ds, diag.Errorf(token.Position{}, "%v\n%s", err, src))
+	}
+	return src, diagStrings(ds)
+}
+
+// planAll plans the containers of pkgs, with the packages of module as the
+// user's module and those a with= may name.
+func planAll(fset *token.FileSet, pkgs []*packages.Package, module string) ([]plan, []diag.Diag) {
 	local := func(p *types.Package) bool {
 		return p.Path() == module || strings.HasPrefix(p.Path(), module+"/")
 	}
@@ -174,17 +210,15 @@ func Plans(fset *token.FileSet, pkgs []*packages.Package, module string) (map[st
 		w.containers[typeKey(c.Named)] = c
 	}
 	planned, pds := plans(w, cs)
-	ds = append(ds, pds...)
-	spelled := make(map[string][]string, len(planned))
-	for _, p := range planned {
-		spelled[p.c.Name] = describe(p)
-	}
+	return planned, append(ds, pds...)
+}
 
-	diags := make([]string, len(ds))
+func diagStrings(ds []diag.Diag) []string {
+	s := make([]string, len(ds))
 	for i, d := range ds {
-		diags[i] = d.String()
+		s[i] = d.String()
 	}
-	return spelled, diags
+	return s
 }
 
 // describe spells p out a line for each step but a parameter, between its
