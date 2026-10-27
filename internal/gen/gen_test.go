@@ -106,6 +106,45 @@ func TestCommand_GeneratesTheConstructor(t *testing.T) {
 	}
 }
 
+func TestCommand_FindsProvidersOfAPackageReachedThroughAnother(t *testing.T) {
+	t.Parallel()
+
+	// app imports handler alone, whose NewUsers takes a *usecase.GetUser: the
+	// provider of that is in a package app does not import.
+	dir := writeModule(t, with(shop, map[string]string{
+		"handler/handler.go": `package handler
+
+import "example.com/shop/usecase"
+
+type Users struct{ getUser *usecase.GetUser }
+
+func NewUsers(getUser *usecase.GetUser) *Users { return &Users{getUser: getUser} }
+`,
+		"app/server.go": `package app
+
+import (
+	"example.com/shop/handler"
+	"example.com/shop/user"
+)
+
+//kanna:container
+type server struct {
+	_ user.Repository ` + "`di:\"with=postgres.NewUserRepository\"`" + `
+
+	users *handler.Users
+}
+`,
+	}))
+	app := filepath.Join(dir, "app")
+	if code, _, stderr := execute(t, app); code != cli.ExitOK {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if got := readFile(t, filepath.Join(app, "di_gen.go")); !strings.Contains(got, "usecase.NewGetUser(repo)") {
+		t.Errorf("di_gen.go does not call usecase.NewGetUser:\n%s", got)
+	}
+	build(t, dir)
+}
+
 func TestCommand_TestContainers(t *testing.T) {
 	t.Parallel()
 

@@ -49,7 +49,11 @@ func run(dir string, cfg config, patterns []string) ([]output.Change, []diag.Dia
 			Tags: cfg.tags,
 			// A container declared in a test file is generated into
 			// testOutputFile, and a provider declared there serves it.
-			Tests:       true,
+			Tests: true,
+			// A provider may be in a package the containers reach only
+			// through another, whose export data would leave its functions
+			// out.
+			Deps:        true,
 			Regenerated: []string{outputFile, testOutputFile},
 		})
 	}
