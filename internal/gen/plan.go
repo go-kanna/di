@@ -30,6 +30,11 @@ type world struct {
 	// containers holds the containers of the run by the key of their type,
 	// for a container embedding one to build it in place.
 	containers map[string]container
+
+	// ours are the constructors the run generates, and stale the names an
+	// earlier run's output gives them and their must variants; see plans.
+	ours  []*ourCtor
+	stale map[string]bool
 }
 
 // plan is how the constructor of a container builds it.
@@ -151,6 +156,10 @@ type planner struct {
 
 	used  map[string]bool
 	diags []diag.Diag
+
+	// waits are the needs set aside for constructors of the run not planned
+	// yet.
+	waits []wait
 }
 
 // callFrame is a call being worked out, and the path that led to it.
@@ -159,8 +168,9 @@ type callFrame struct {
 	via  []string
 }
 
-// planOf works out how the constructor of c builds it, in w.
-func planOf(w *world, c container) (plan, []diag.Diag) {
+// planOf works out how the constructor of c builds it, in w. A plan that has
+// to wait for another constructor of the run says what it waits for instead.
+func planOf(w *world, c container) (plan, []diag.Diag, []wait) {
 	pl := &planner{
 		w:           w,
 		c:           c,
@@ -183,7 +193,7 @@ func planOf(w *world, c container) (plan, []diag.Diag) {
 		pl.pl.errs = pl.pl.errs || s.p.errs
 		pl.pl.cleanup = pl.pl.cleanup || s.p.cleanup
 	}
-	return *pl.pl, pl.diags
+	return *pl.pl, pl.diags, pl.waits
 }
 
 // choose resolves the with= of f, reporting at f what it names wrong.
@@ -277,10 +287,16 @@ func (pl *planner) candidates(pkg *types.Package, t types.Type, own bool) ([]pro
 		ps   []provider
 		near []string
 	)
-	for _, p := range pl.w.x.lookup(pkg, t) {
+	ours := pl.w.generatedIn(pkg, t, pl.c)
+	all := slices.Clone(pl.w.x.lookup(pkg, t))
+	for _, g := range ours {
+		all = append(all, g.p)
+	}
+	for _, p := range all {
 		name := pl.nameOf(p)
+		_, fresh := pl.w.isOurs(p)
 		switch {
-		case pl.isSelf(p):
+		case !fresh && pl.w.stale[p.fn.FullName()]:
 		case p.bad != "":
 			near = append(near, fmt.Sprintf("%s returns %s but cannot be a provider: %s", name, pl.typeString(t), p.bad))
 		case !own && !p.fn.Exported():
@@ -295,17 +311,15 @@ func (pl *planner) candidates(pkg *types.Package, t types.Type, own bool) ([]pro
 	return ps, near
 }
 
-// isSelf reports whether p is the constructor, or its must variant, that an
-// earlier run generated for this very container.
-func (pl *planner) isSelf(p provider) bool {
-	return p.fn.Pkg().Path() == pl.c.PkgPath && (p.fn.Name() == pl.c.ctor || p.fn.Name() == pl.c.must)
-}
-
 // call returns the step calling p, working out its arguments first.
 func (pl *planner) call(p provider, via []string) int {
 	key := p.fn.FullName()
 	if s, ok := pl.byCall[key]; ok {
 		return s
+	}
+	if g, ok := pl.w.isOurs(p); ok && !g.planned {
+		pl.waits = append(pl.waits, wait{root: pl.root, t: p.result, via: via, on: g})
+		return -1
 	}
 	name := pl.nameOf(p)
 	if i := slices.IndexFunc(pl.calling, func(f callFrame) bool { return f.name == name }); i >= 0 {

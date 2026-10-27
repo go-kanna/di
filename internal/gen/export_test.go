@@ -173,18 +173,18 @@ func Plans(fset *token.FileSet, pkgs []*packages.Package, module string) (map[st
 	for _, c := range cs {
 		w.containers[typeKey(c.Named)] = c
 	}
-	plans := make(map[string][]string)
-	for _, c := range cs {
-		p, pds := planOf(w, c)
-		ds = append(ds, pds...)
-		plans[c.Name] = describe(p)
+	planned, pds := plans(w, cs)
+	ds = append(ds, pds...)
+	spelled := make(map[string][]string, len(planned))
+	for _, p := range planned {
+		spelled[p.c.Name] = describe(p)
 	}
 
 	diags := make([]string, len(ds))
 	for i, d := range ds {
 		diags[i] = d.String()
 	}
-	return plans, diags
+	return spelled, diags
 }
 
 // describe spells p out a line for each step but a parameter, between its
