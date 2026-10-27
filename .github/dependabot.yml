@@ -6,7 +6,9 @@ updates:
       interval: weekly
 
   - package-ecosystem: gomod
-    directory: /
+    directories:
+      - /
+      - /example
     schedule:
       interval: weekly
     groups:

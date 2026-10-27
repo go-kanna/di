@@ -300,9 +300,9 @@ cleanup nor an error.
 ```go
 //kanna:container
 type testServer struct {
-	_ user.Repository `di:"arg"`
-
 	*server
+
+	_ user.Repository `di:"arg"`
 }
 
 func TestRegisterUser(t *testing.T) {
@@ -350,7 +350,7 @@ a test container that swaps the repository for one in memory. CI regenerates it 
 ```sh
 make test       # unit tests
 make lint       # golangci-lint
-make example    # regenerate the example, then build and run it
+make example    # regenerate the example, then vet, test, and run it
 ```
 
 ## License
