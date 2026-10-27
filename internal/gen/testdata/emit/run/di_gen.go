@@ -20,13 +20,14 @@ func NewApp(log *Log) (*App, func(), error) {
 		return nil, nil, err
 	}
 	service := NewService(db, cache, queue)
+	cleanupAll := func() {
+		cleanup2()
+		cleanup()
+	}
 
 	return &App{
 		Service: service,
-	}, func() {
-		cleanup2()
-		cleanup()
-	}, nil
+	}, cleanupAll, nil
 }
 
 // MustNewApp initializes dependencies and constructs App or panics on failure.

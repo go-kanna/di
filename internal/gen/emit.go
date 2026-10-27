@@ -148,7 +148,16 @@ func (e *emitter) constructor() {
 	value := !pointer && !types.IsInterface(e.p.c.returns)
 	results := []string{e.literal(e.p.c, !value, e.p.fields)}
 	if e.p.cleanup {
-		results = append(results, combined(cleanups))
+		cleanup := cleanups[0]
+		if len(cleanups) > 1 {
+			// Set apart from the return: gofmt indents a function literal
+			// after a struct literal in one statement differently from one
+			// release of Go to the next.
+			cleanup = scope.Name("cleanupAll")
+			fmt.Fprintf(e.f, "\t%s := %s\n", cleanup, combined(cleanups))
+			wrote = true
+		}
+		results = append(results, cleanup)
 	}
 	if e.p.errs {
 		results = append(results, "nil")
@@ -306,9 +315,6 @@ func (e *emitter) typeString(t types.Type) string {
 
 // combined writes the cleanup releasing what cleanups do, the last first.
 func combined(cleanups []string) string {
-	if len(cleanups) == 1 {
-		return cleanups[0]
-	}
 	var b strings.Builder
 	b.WriteString("func() {\n")
 	for _, c := range slices.Backward(cleanups) {
