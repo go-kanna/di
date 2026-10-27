@@ -274,13 +274,14 @@ func newServer() (*server, func(), error) {
 		return nil, nil, err
 	}
 	// ...
+	cleanupAll := func() {
+		cleanup2()
+		cleanup()
+	}
 
 	return &server{
 		// ...
-	}, func() {
-		cleanup2()
-		cleanup()
-	}, nil
+	}, cleanupAll, nil
 }
 ```
 
