@@ -97,7 +97,7 @@ func pick(qualifier string, want types.Type, pkgs []*types.Package) (*types.Pack
 		if slices.ContainsFunc(matched, func(m *types.Package) bool { return m.Path() == p.Path() }) {
 			continue
 		}
-		if p.Path() == qualifier || strings.HasSuffix(p.Path(), "/"+qualifier) || p.Name() == qualifier {
+		if qualifies(qualifier, p.Path(), p.Name()) {
 			matched = append(matched, p)
 		}
 		names = append(names, p.Name())
@@ -124,6 +124,12 @@ func pick(qualifier string, want types.Type, pkgs []*types.Package) (*types.Pack
 			hint: "write as much of the import path as it takes to tell them apart",
 		}
 	}
+}
+
+// qualifies reports whether qualifier, as written before the function of a
+// with=, names the package at path declaring itself name.
+func qualifies(qualifier, path, name string) bool {
+	return path == qualifier || strings.HasSuffix(path, "/"+qualifier) || name == qualifier
 }
 
 // funcNames lists the functions of pkg that a with= could name: its exported
