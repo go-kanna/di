@@ -4,6 +4,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/go-kanna/di/example/internal/user"
@@ -30,7 +31,7 @@ func (uc *RegisterUser) Do(ctx context.Context, name string) (user.User, error) 
 	}
 	u := user.User{Name: name}
 	if err := uc.repo.Save(ctx, u); err != nil {
-		return user.User{}, err
+		return user.User{}, fmt.Errorf("register %s: %w", name, err)
 	}
 	uc.log.InfoContext(ctx, "registered", "name", name)
 	return u, nil
@@ -48,5 +49,9 @@ func NewGetUser(repo user.Repository) *GetUser {
 
 // Do finds the user called name.
 func (uc *GetUser) Do(ctx context.Context, name string) (user.User, error) {
-	return uc.repo.Find(ctx, name)
+	u, err := uc.repo.Find(ctx, name)
+	if err != nil {
+		return user.User{}, fmt.Errorf("get %s: %w", name, err)
+	}
+	return u, nil
 }

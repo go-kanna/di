@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/go-kanna/di/example/internal/config"
@@ -26,7 +27,7 @@ func Open(cfg config.Config) (*Store, func(), error) {
 		return nil, nil, errors.New("memory: no store named")
 	}
 	s := &Store{users: make(map[string]user.User)}
-	return s, func() { fmt.Println("closed the store", cfg.Store) }, nil
+	return s, func() { fmt.Fprintln(os.Stdout, "closed the store", cfg.Store) }, nil
 }
 
 // UserRepository is the user.Repository on a Store.

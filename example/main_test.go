@@ -17,9 +17,9 @@ import (
 //
 //kanna:container
 type testServer struct {
-	_ user.Repository `di:"arg"`
-
 	*server
+
+	_ user.Repository `di:"arg"`
 }
 
 // fakeRepo is a user.Repository the test can look into.
@@ -39,11 +39,14 @@ func (r fakeRepo) Find(_ context.Context, name string) (user.User, error) {
 }
 
 func TestRegister(t *testing.T) {
+	t.Parallel()
+
 	repo := fakeRepo{}
 	s := newTestServer(repo, io.Discard)
 
 	rec := httptest.NewRecorder()
-	s.routes().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(`{"name":"alice"}`)))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/users", strings.NewReader(`{"name":"alice"}`))
+	s.routes().ServeHTTP(rec, req)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusCreated, rec.Body)
 	}

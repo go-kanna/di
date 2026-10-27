@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -71,7 +72,8 @@ func main() {
 		{"POST", "/users", `{"name":""}`},
 	} {
 		rec := httptest.NewRecorder()
-		routes.ServeHTTP(rec, httptest.NewRequest(req.method, req.path, strings.NewReader(req.body)))
-		fmt.Printf("%s %s -> %d %s", req.method, req.path, rec.Code, rec.Body)
+		r := httptest.NewRequestWithContext(context.Background(), req.method, req.path, strings.NewReader(req.body))
+		routes.ServeHTTP(rec, r)
+		fmt.Fprintf(os.Stdout, "%s %s -> %d %s", req.method, req.path, rec.Code, rec.Body)
 	}
 }

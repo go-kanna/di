@@ -38,7 +38,7 @@ func (h *User) Register(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusCreated, u)
+	writeUser(w, http.StatusCreated, u)
 }
 
 // Get finds the user the path names.
@@ -51,11 +51,16 @@ func (h *User) Get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, u)
+	writeUser(w, http.StatusOK, u)
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
+func writeUser(w http.ResponseWriter, status int, u user.User) {
+	body, err := json.Marshal(u)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_, _ = w.Write(append(body, '\n'))
 }
