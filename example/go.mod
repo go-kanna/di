@@ -4,8 +4,12 @@ go 1.26.0
 
 toolchain go1.26.9
 
-// There is no require of github.com/go-kanna/di yet: it is unreleased, so this
-// resolves through the repository's go.work. Once it carries a tag, running
-// `go get -tool github.com/go-kanna/di/cmd/kanna-di` in your own module adds
-// the require and the setup stands on its own.
 tool github.com/go-kanna/di/cmd/kanna-di
+
+require (
+	github.com/go-kanna/di v0.0.1 // indirect
+	github.com/go-kanna/internal v0.0.3 // indirect
+	golang.org/x/mod v0.42.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/tools v0.52.0 // indirect
+)
