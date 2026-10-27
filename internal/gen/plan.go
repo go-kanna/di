@@ -26,6 +26,10 @@ type world struct {
 	// dir is the directory positions in hints are written relative to, as
 	// diag.Write writes those of the diagnostics.
 	dir string
+
+	// containers holds the containers of the run by the key of their type,
+	// for a container embedding one to build it in place.
+	containers map[string]container
 }
 
 // plan is how the constructor of a container builds it.
@@ -52,19 +56,55 @@ type param struct {
 	typ  types.Type
 }
 
-// step makes one value: a parameter of the constructor, or what a call of a
-// provider returns.
+// stepKind says how a step makes its value.
+type stepKind int
+
+const (
+	// paramStep is a parameter of the constructor.
+	paramStep stepKind = iota
+
+	// callStep is what a call of a provider returns.
+	callStep
+
+	// fieldStep is a field of the value of another step, a struct the
+	// container embeds.
+	fieldStep
+
+	// literalStep is a container the container embeds, built in place.
+	literalStep
+)
+
+// step makes one value.
 type step struct {
-	typ types.Type
+	kind stepKind
+	typ  types.Type
 
 	// name is what to call the value. Emit makes it unique.
 	name string
 
-	// param is the index of the parameter the value is, or -1 for a call.
+	// param is the index of the parameter, for a paramStep.
 	param int
 
+	// p and args are the provider and the steps passed to it, for a
+	// callStep.
 	p    provider
 	args []int
+
+	// of and path are the step whose value holds the field and the fields
+	// leading to it, for a fieldStep.
+	of   int
+	path []string
+
+	// lit is the container built in place, for a literalStep.
+	lit *literal
+}
+
+// literal is a container built in place, as a struct literal or, when
+// pointer, the address of one.
+type literal struct {
+	c       container
+	pointer bool
+	fields  []assign
 }
 
 // assign puts the value of a step into a field of the struct literal.
@@ -95,7 +135,15 @@ type planner struct {
 
 	// calling lists the calls being worked out, innermost last, to tell a
 	// cycle.
-	calling []string
+	calling []callFrame
+
+	// embeds are the structs the container embeds without building them in
+	// place, its own and those of the containers it does build in place.
+	embeds []*embedded
+
+	// innerChosen holds what the with= of the containers built in place
+	// chose, by type.
+	innerChosen map[string][]innerChoice
 
 	// root is the field whose value is being worked out, where a diagnostic
 	// about any of its dependencies is reported.
@@ -105,40 +153,29 @@ type planner struct {
 	diags []diag.Diag
 }
 
+// callFrame is a call being worked out, and the path that led to it.
+type callFrame struct {
+	name string
+	via  []string
+}
+
 // planOf works out how the constructor of c builds it, in w.
 func planOf(w *world, c container) (plan, []diag.Diag) {
 	pl := &planner{
-		w:      w,
-		c:      c,
-		own:    c.Named.Obj().Pkg(),
-		pl:     &plan{c: c},
-		args:   make(map[string]int),
-		chosen: make(map[string]*provider),
-		byType: make(map[string]int),
-		byCall: make(map[string]int),
-		used:   make(map[string]bool),
+		w:           w,
+		c:           c,
+		own:         c.Named.Obj().Pkg(),
+		pl:          &plan{c: c},
+		args:        make(map[string]int),
+		chosen:      make(map[string]*provider),
+		byType:      make(map[string]int),
+		byCall:      make(map[string]int),
+		innerChosen: make(map[string][]innerChoice),
+		used:        make(map[string]bool),
 	}
 
-	for _, f := range c.fields {
-		switch f.source {
-		case fromArg:
-			pl.args[typeKey(f.Type)] = len(pl.pl.params)
-			pl.pl.params = append(pl.pl.params, param{name: f.paramName(), typ: f.Type})
-		case fromRef:
-			pl.choose(f)
-		case fromType, fromNowhere:
-		}
-	}
-
-	for _, f := range c.fields {
-		if f.blank() || f.source == fromNowhere {
-			continue
-		}
-		pl.root = f.Field
-		if s := pl.need(f.Type, []string{c.Name + "." + f.Name}); s >= 0 {
-			pl.pl.fields = append(pl.pl.fields, assign{field: f.Name, step: s})
-		}
-	}
+	pl.collect(c, true, []string{c.Name})
+	pl.pl.fields = pl.fill(c, c.Name, true, []string{c.Name})
 
 	pl.warnUnused()
 	pl.name()
@@ -179,17 +216,24 @@ func (pl *planner) need(t types.Type, via []string) int {
 		return s
 	}
 	s := pl.find(t, k, via)
-	if s >= 0 {
+	if s >= 0 && !pl.busyWith(k) {
 		pl.byType[k] = s
 	}
 	return s
+}
+
+// busyWith reports whether a struct being worked out embeds a field of the type
+// k keys. What its fields would serve is found elsewhere until it is done, and
+// that is not what the type is to come from once they can.
+func (pl *planner) busyWith(k string) bool {
+	return slices.ContainsFunc(pl.embeds, func(e *embedded) bool { return e.busy && hasKey(e.byType, k) })
 }
 
 // find works out the step for t, looking in the order the README gives.
 func (pl *planner) find(t types.Type, k string, via []string) int {
 	if i, ok := pl.args[k]; ok {
 		pl.used[k] = true
-		return pl.add(step{typ: t, name: pl.pl.params[i].name, param: i})
+		return pl.add(step{kind: paramStep, typ: t, name: pl.pl.params[i].name, param: i})
 	}
 	if p, ok := pl.chosen[k]; ok {
 		pl.used[k] = true
@@ -197,6 +241,9 @@ func (pl *planner) find(t types.Type, k string, via []string) int {
 			return -1 // reported at the with=
 		}
 		return pl.call(*p, via)
+	}
+	if s, ok := pl.fromEmbedded(t, k, via); ok {
+		return s
 	}
 
 	var near []string
@@ -261,17 +308,20 @@ func (pl *planner) call(p provider, via []string) int {
 		return s
 	}
 	name := pl.nameOf(p)
-	if i := slices.Index(pl.calling, name); i >= 0 {
-		cycle := append(slices.Clone(pl.calling[i:]), name)
-		d := diag.Errorf(pl.root.Pos, "dependency cycle: %s", strings.Join(cycle, " → "))
-		if outer := via[:len(via)-len(pl.calling)+i]; len(outer) > 1 {
+	if i := slices.IndexFunc(pl.calling, func(f callFrame) bool { return f.name == name }); i >= 0 {
+		var cycle []string
+		for _, f := range pl.calling[i:] {
+			cycle = append(cycle, f.name)
+		}
+		d := diag.Errorf(pl.root.Pos, "dependency cycle: %s", strings.Join(append(cycle, name), " → "))
+		if outer := pl.calling[i].via; len(outer) > 1 {
 			d = d.WithHints("via " + strings.Join(outer, " → "))
 		}
 		pl.diags = append(pl.diags, d)
 		return -1
 	}
 
-	pl.calling = append(pl.calling, name)
+	pl.calling = append(pl.calling, callFrame{name: name, via: via})
 	defer func() { pl.calling = pl.calling[:len(pl.calling)-1] }()
 
 	via = append(slices.Clip(via), name)
@@ -282,7 +332,7 @@ func (pl *planner) call(p provider, via []string) int {
 		}
 	}
 
-	s := pl.add(step{typ: p.result, param: -1, p: p, args: args})
+	s := pl.add(step{kind: callStep, typ: p.result, p: p, args: args})
 	pl.byCall[key] = s
 	return s
 }
@@ -352,13 +402,13 @@ func (pl *planner) warnUnused() {
 // one made from its type.
 func (pl *planner) name() {
 	steps := pl.pl.steps
-	for _, a := range pl.pl.fields {
-		if s := &steps[a.step]; s.param < 0 && s.name == "" {
+	for _, a := range pl.assigns() {
+		if s := &steps[a.step]; s.name == "" {
 			s.name = lowerFirst(a.field)
 		}
 	}
 	for _, s := range steps {
-		if s.param >= 0 {
+		if s.kind != callStep {
 			continue
 		}
 		params := s.p.fn.Signature().Params()

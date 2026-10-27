@@ -169,6 +169,10 @@ func Plans(fset *token.FileSet, pkgs []*packages.Package, module string) (map[st
 	}
 
 	cs, ds := containers(fset, scan.Structs(pkgs))
+	w.containers = make(map[string]container, len(cs))
+	for _, c := range cs {
+		w.containers[typeKey(c.Named)] = c
+	}
 	plans := make(map[string][]string)
 	for _, c := range cs {
 		p, pds := planOf(w, c)
@@ -183,12 +187,15 @@ func Plans(fset *token.FileSet, pkgs []*packages.Package, module string) (map[st
 	return plans, diags
 }
 
-// describe spells p out a line for each call, between its signature and the
-// struct it returns:
+// describe spells p out a line for each step but a parameter, between its
+// signature and the struct it returns:
 //
 //	newServer() (*server, func(), error)
 //	cfg := config.Load() error
 //	db := openDB(cfg) cleanup error
+//	deps := infra.NewDeps()
+//	cache := deps.Cache
+//	base := &base{cache: cache}
 //	server{users: users}
 //
 // Names are made unique as emit would, by a number from 2.
@@ -220,35 +227,49 @@ func describe(p plan) []string {
 	lines := []string{sig}
 
 	names := make([]string, len(p.steps))
+	literal := func(c container, as []assign) string {
+		fields := make([]string, len(as))
+		for i, a := range as {
+			fields[i] = a.field + ": " + names[a.step]
+		}
+		return c.Name + "{" + strings.Join(fields, ", ") + "}"
+	}
 	for i, s := range p.steps {
-		if s.param >= 0 {
+		if s.kind == paramStep {
 			names[i] = strings.Fields(params[s.param])[0]
 			continue
 		}
 		names[i] = unique(s.name)
-		args := make([]string, len(s.args))
-		for j, a := range s.args {
-			args[j] = names[a]
-		}
-		fn := s.p.fn.Name()
-		if s.p.fn.Pkg().Path() != own.Path() {
-			fn = s.p.fn.Pkg().Name() + "." + fn
-		}
-		line := names[i] + " := " + fn + "(" + strings.Join(args, ", ") + ")"
-		if s.p.cleanup {
-			line += " cleanup"
-		}
-		if s.p.errs {
-			line += " error"
+		line := names[i] + " := "
+		switch s.kind {
+		case callStep:
+			args := make([]string, len(s.args))
+			for j, a := range s.args {
+				args[j] = names[a]
+			}
+			fn := s.p.fn.Name()
+			if s.p.fn.Pkg().Path() != own.Path() {
+				fn = s.p.fn.Pkg().Name() + "." + fn
+			}
+			line += fn + "(" + strings.Join(args, ", ") + ")"
+			if s.p.cleanup {
+				line += " cleanup"
+			}
+			if s.p.errs {
+				line += " error"
+			}
+		case fieldStep:
+			line += names[s.of] + "." + strings.Join(s.path, ".")
+		case literalStep:
+			if s.lit.pointer {
+				line += "&"
+			}
+			line += literal(s.lit.c, s.lit.fields)
+		case paramStep:
 		}
 		lines = append(lines, line)
 	}
-
-	fields := make([]string, len(p.fields))
-	for i, a := range p.fields {
-		fields[i] = a.field + ": " + names[a.step]
-	}
-	return append(lines, p.c.Name+"{"+strings.Join(fields, ", ")+"}")
+	return append(lines, literal(p.c, p.fields))
 }
 
 // evalType reads the type expr names in the scope of the first file of pkg, so

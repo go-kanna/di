@@ -157,8 +157,8 @@ For each type it needs, kanna-di takes the first of these that has one:
 
 1. an argument of the constructor (`di:"arg"`)
 2. the provider the container chooses for the type (`di:"with=..."`)
-3. what an embedded struct brings along: its exported fields, or, for an embedded container, its fields and its own
-   choices (see [Containers](#containers))
+3. what the container embeds: an exported field of a struct it embeds, or the `with=` of a container it builds in
+   place (see [Containers](#containers))
 4. a function in the container's package, exported or not
 5. an exported function in the package declaring the type, when that package is in your module or your go.work
 
@@ -223,8 +223,9 @@ What the container takes or chooses but nothing needs draws a warning:
 ```
 
 An embedded struct, or pointer to one, is resolved — or, tagged `di:"arg"`, taken as a parameter — and stored like any
-field, and its exported fields, promoted ones included, serve the rest of the container. A shallower field hides a
-deeper one of the same type, as in Go; two at the same depth are an error.
+field, and its exported fields, promoted ones included, serve the rest of the container; they cannot serve what the
+struct itself is built from. A shallower field hides a deeper one of the same type, as in Go; two at the same depth are
+an error when the type is needed.
 
 ```go
 //kanna:container
@@ -235,10 +236,11 @@ type App struct {
 }
 ```
 
-An embedded container — a struct marked `//kanna:container` itself — is not built by its own constructor but here,
-field by field, as part of this one. Its fields and its own `with=` serve this container, after this container's
-arguments and `with=`, which is how a test takes a server apart without restating it (see [Tests](#tests)). A named
-field of a container type is an ordinary dependency, built by that container's constructor.
+A container of the same package embedded without a tag — a struct marked `//kanna:container` itself — is not built by
+its own constructor but here, field by field, as part of this one. What it takes as arguments, this constructor takes
+too, unless it takes the type itself; its `with=` serve this container after this container's own. That is how a test
+takes a server apart without restating it (see [Tests](#tests)). A container of another package is built by its
+constructor instead, since its unexported fields cannot be set from here, and so is a named field of a container type.
 
 The directive takes options:
 
@@ -290,9 +292,10 @@ for implementing `io.Closer`.
 ## Tests
 
 A container declared in a `_test.go` file is generated too, into `di_gen_test.go` next to it, in the package that file
-declares — the package itself or its external `_test` package. This one embeds the server, so it is the server, built
-here with the repository taken as an argument instead of chosen with `with=`. Nothing then needs `*sql.DB` or
-`config.Config`: `openDB` and `config.Load` are not called, and `newTestServer` returns neither a cleanup nor an error.
+declares — the package itself or its external `_test` package. This one, in the package itself, embeds the server, so
+it is the server, built here with the repository taken as an argument instead of chosen with `with=`. Nothing then
+needs `*sql.DB` or `config.Config`: `openDB` and `config.Load` are not called, and `newTestServer` returns neither a
+cleanup nor an error.
 
 ```go
 //kanna:container

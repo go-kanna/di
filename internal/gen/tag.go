@@ -60,6 +60,14 @@ type ref struct {
 	fn string
 }
 
+// String spells r as it is written after with=.
+func (r ref) String() string {
+	if r.pkg == "" {
+		return r.fn
+	}
+	return r.pkg + "." + r.fn
+}
+
 // parseTag reads the di tag in st. A field without one is filled by its type,
 // as is one whose tag is empty.
 func parseTag(st reflect.StructTag) (tag, error) {
