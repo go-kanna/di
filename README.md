@@ -157,8 +157,8 @@ For each type it needs, kanna-di takes the first of these that has one:
 
 1. an argument of the constructor (`di:"arg"`)
 2. the provider the container chooses for the type (`di:"with=..."`)
-3. what the container embeds: an exported field of a struct it embeds, or the `with=` of a container it builds in
-   place (see [Containers](#containers))
+3. what the container embeds: an exported field of a struct it embeds or declares as `_`, or the `with=` of a
+   container it builds in place (see [Containers](#containers))
 4. a function in the container's package, exported or not
 5. an exported function in the package declaring the type, when that package is in your module or your go.work
 
@@ -195,7 +195,8 @@ DSN — or choose one with `with=`.
 | `infra/postgres.NewUserRepository` | the same, with as much of the import path as it takes to tell two such packages apart  |
 
 The provider's result only has to be assignable to the type, which is how an interface gets its implementation. On a
-named field, `with=` also stores the value; on `_`, it only chooses.
+named field, `with=` also stores the value; on `_`, it only chooses, and a struct's fields then serve the container (see
+[Containers](#containers)).
 
 ```console
 ./server.go:9:2: error: package postgres has no function NewUserRepositry (field _)
@@ -236,6 +237,36 @@ type App struct {
 	infra.Deps `di:"arg"` // its DB and Cache serve the providers of Users
 
 	Users *handler.User
+}
+```
+
+A struct, or pointer to one, in a `_` field serves the container the same way without being stored, so the container
+gets neither the struct nor the fields and methods embedding would promote onto it. It is resolved when it, or one of
+its fields, is needed. A use case draws on what the infrastructure bundles this way:
+
+```go
+//kanna:container
+type DeleteTodo struct {
+	_ *infra.Deps `di:"with=infra.NewDeps"` // its Transactor and Todos fill the fields below
+
+	transactor tx.Transactor
+	todos      repository.Todo
+}
+```
+
+```go
+func NewDeleteTodo() (*DeleteTodo, func(), error) {
+	deps, cleanup, err := infra.NewDeps()
+	if err != nil {
+		return nil, nil, err
+	}
+	transactor := deps.Transactor
+	todos := deps.Todos
+
+	return &DeleteTodo{
+		transactor: transactor,
+		todos:      todos,
+	}, cleanup, nil
 }
 ```
 
@@ -290,8 +321,8 @@ func newServer() (*server, func(), error) {
 
 The cleanups run in the reverse of the order their providers ran in. When a provider fails, the cleanups of those that
 ran before it are run before the error is returned. The must variant returns the cleanup as well. What the constructor
-takes as an argument, or finds in an embedded struct, belongs to the caller and is never closed; neither is anything
-for implementing `io.Closer`.
+takes as an argument, or finds in a struct it embeds or declares as `_`, belongs to the caller and is never closed;
+neither is anything for implementing `io.Closer`.
 
 ## Tests
 

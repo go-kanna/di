@@ -46,6 +46,18 @@ func newShared() *shared {
 	}
 }
 
+// newDrawn initializes dependencies and constructs drawn.
+func newDrawn() *drawn {
+	deps := newDeps()
+	db := deps.DB
+	type2 := newType()
+	users2 := newUsers(db, type2)
+
+	return &drawn{
+		users: users2,
+	}
+}
+
 // newEmpty initializes dependencies and constructs empty.
 func newEmpty() *empty {
 	return &empty{}

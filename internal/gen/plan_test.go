@@ -218,6 +218,18 @@ func TestPlans_Diagnostics(t *testing.T) {
 			want:  "x.go:13:2: warning: nothing in c needs the Env it takes with di:\"arg\"",
 		},
 		{
+			name:  "a struct taken that nothing draws on",
+			decls: "type Deps struct{ DB *DB }",
+			body:  "_ Deps `di:\"arg\"`",
+			want:  "x.go:13:2: warning: nothing in c needs the Deps it takes with di:\"arg\", nor any of its fields",
+		},
+		{
+			name:  "a struct chosen that nothing draws on",
+			decls: "type Deps struct{ DB *DB }\nfunc newDeps() *Deps { return nil }",
+			body:  "_ *Deps `di:\"with=newDeps\"`",
+			want:  "x.go:13:2: warning: nothing in c needs *Deps or any of its fields, so its with= chooses nothing",
+		},
+		{
 			name:  "a with= nothing needs",
 			decls: "func newRepo() impl { return impl{} }",
 			body:  "_ Repo `di:\"with=newRepo\"`",
