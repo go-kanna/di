@@ -277,7 +277,7 @@ func TestPlans_Diagnostics(t *testing.T) {
 
 import "log/slog"
 
-type (DB struct{}; Users struct{}; App struct{}; Env string; Repo interface{ Find() }; impl struct{})
+type (DB struct{ dsn string }; Users struct{}; App struct{}; Env string; Repo interface{ Find() }; impl struct{})
 
 func (impl) Find() {}
 
@@ -325,6 +325,46 @@ type c struct {
 
 	// The Repo chosen and the *impl asked for come from one call.
 	want := []string{"newC() *c", "repo := newRepo()", "c{repo: repo, impl: repo}"}
+	if !slices.Equal(got["c"], want) || len(diags) > 0 {
+		t.Errorf("plan =\n%s\nwant\n%s\ndiagnostics %q", strings.Join(got["c"], "\n"), strings.Join(want, "\n"), diags)
+	}
+}
+
+func TestPlans_LeaveAStructWithoutFieldsAtItsZeroValue(t *testing.T) {
+	t.Parallel()
+
+	got, diags := plans(t, map[string]string{"x.go": `package test
+
+type (
+	UnimplementedServer struct{}
+	Marker              struct{}
+	Token               struct{}
+	Users               struct{}
+)
+
+func newMarker() Marker { return Marker{} }
+func newUsers() *Users  { return nil }
+
+//kanna:container
+type c struct {
+	UnimplementedServer
+
+	none   struct{}
+	marker Marker ` + "`di:\"with=newMarker\"`" + `
+	token  Token  ` + "`di:\"arg\"`" + `
+	users  *Users
+}
+`})
+
+	// Nothing provides UnimplementedServer or struct{}, and nothing has to:
+	// their zero value is the only one they have. A tag still says where the
+	// value comes from, and a pointer to such a struct may be nil.
+	want := []string{
+		"newC(token Token) *c",
+		"marker := newMarker()",
+		"users := newUsers()",
+		"c{marker: marker, token: token, users: users}",
+	}
 	if !slices.Equal(got["c"], want) || len(diags) > 0 {
 		t.Errorf("plan =\n%s\nwant\n%s\ndiagnostics %q", strings.Join(got["c"], "\n"), strings.Join(want, "\n"), diags)
 	}

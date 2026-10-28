@@ -58,6 +58,18 @@ func (f field) blank() bool {
 	return f.Name == "_"
 }
 
+// zero reports whether the constructor leaves the field at its zero value:
+// tagged di:"-", or untagged and of a struct type without fields, such as the
+// Unimplemented server a gRPC service embeds, whose zero value is the only one
+// it has.
+func (f field) zero() bool {
+	if f.source == fromNowhere {
+		return true
+	}
+	st, ok := f.Type.Underlying().(*types.Struct)
+	return f.source == fromType && ok && st.NumFields() == 0
+}
+
 // paramName is what the constructor calls the parameter of a fromArg field:
 // the name its tag gives, or one made from its type, or "" when the type has
 // no name to make one from.

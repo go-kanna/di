@@ -74,7 +74,7 @@ func (pl *planner) collect(c container, top bool, path []string) {
 	}
 
 	for _, f := range c.fields {
-		if f.source == fromNowhere {
+		if f.zero() {
 			continue
 		}
 		via := strings.Join(path, ".") + "." + f.Name
@@ -108,7 +108,7 @@ func (pl *planner) collect(c container, top bool, path []string) {
 func (pl *planner) fill(c container, owner string, top bool, path []string) []assign {
 	var fields []assign
 	for _, f := range c.fields {
-		if f.blank() || f.source == fromNowhere {
+		if f.blank() || f.zero() {
 			continue
 		}
 		if top {

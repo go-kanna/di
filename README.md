@@ -216,6 +216,9 @@ named field, `with=` also stores the value; on `_`, it only chooses, and a struc
 | `di:"arg=<name>"` | the same, with the parameter's name spelled out                   | the same, with the parameter's name             |
 | `di:"-"`          | leave the field alone                                             | error                                           |
 
+A named or embedded field without a tag whose type is a struct with no fields, not a pointer to one, is left at its zero
+value, the only value it has: a gRPC server embedding `todov1.UnimplementedTodoServiceServer` needs no provider for it.
+
 A parameter keeps its name, and an import the generated file needs under that name is renamed instead; a name spelled
 out that the package declares at the top level, or that Go does, is an error.
 
