@@ -215,6 +215,9 @@ named field, `with=` also stores the value; on `_`, it only chooses.
 | `di:"arg=<name>"` | the same, with the parameter's name spelled out                   | the same, with the parameter's name    |
 | `di:"-"`          | leave the field alone                                             | error                                  |
 
+A parameter keeps its name, and an import the generated file needs under that name is renamed instead; a name spelled
+out that the package declares at the top level, or that Go does, is an error.
+
 What the container takes or chooses but nothing needs draws a warning:
 
 ```console

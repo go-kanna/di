@@ -266,6 +266,11 @@ func TestContainers_Diagnostics(t *testing.T) {
 			want: `di:"arg=nil": a parameter named nil would hide Go's own nil (field _)`,
 		},
 		{
+			name: "argument hiding a declared name",
+			src:  "\n//kanna:container\ntype c struct {\n\t_ Env `di:\"arg=Config\"`\n}\n",
+			want: `di:"arg=Config": a parameter named Config would hide the package's own Config (field _)`,
+		},
+		{
 			name: "argument taken twice",
 			src:  "\n//kanna:container\ntype c struct {\n\t_ Env `di:\"arg\"`\n\tenv Env `di:\"arg=e\"`\n}\n",
 			want: "x.go:7:2: error: Env is taken twice (line 6) (field env)",

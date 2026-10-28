@@ -32,15 +32,19 @@ func emit(pkgPath, pkgName string, plans []plan, declared []string) *gofile.File
 		}
 	}
 
-	// Naming the imports first lets them keep the names of their packages, as
-	// the variables give way to them.
+	// The parameters are named first, so that they keep their names, and the
+	// imports next, so that they keep the names of their packages: the
+	// variables of the bodies give way to both.
+	es := make([]*emitter, len(plans))
+	for i, p := range plans {
+		es[i] = newEmitter(f, p)
+	}
 	for _, p := range plans {
 		importAll(f, p)
 	}
-	for _, p := range plans {
-		e := emitter{f: f, p: p, own: p.c.Named.Obj().Pkg()}
+	for _, e := range es {
 		e.constructor()
-		if p.c.must != "" {
+		if e.p.c.must != "" {
 			e.must()
 		}
 	}
@@ -66,9 +70,21 @@ type emitter struct {
 	p   plan
 	own *types.Package
 
-	// params and names are what the constructor calls its parameters and the
-	// value of each step.
+	// scope holds the locals of the constructor, and params and names are
+	// what it calls its parameters and the value of each step.
+	scope         gofile.Scope
 	params, names []string
+}
+
+// newEmitter starts the emitter of p, naming the parameters of its
+// constructor.
+func newEmitter(f *gofile.File, p plan) *emitter {
+	e := &emitter{f: f, p: p, own: p.c.Named.Obj().Pkg(), scope: f.Scope()}
+	e.params = make([]string, len(p.params))
+	for i, prm := range p.params {
+		e.params[i] = e.scope.Name(prm.name)
+	}
+	return e
 }
 
 // constructor writes the constructor:
@@ -86,11 +102,7 @@ type emitter struct {
 //		}, nil
 //	}
 func (e *emitter) constructor() {
-	scope := e.f.Scope()
-	e.params = make([]string, len(e.p.params))
-	for i, prm := range e.p.params {
-		e.params[i] = scope.Name(prm.name)
-	}
+	scope := e.scope
 	errName := ""
 	if e.p.errs {
 		errName = scope.Name("err")

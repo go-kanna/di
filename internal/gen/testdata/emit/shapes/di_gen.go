@@ -2,6 +2,10 @@
 
 package shapes
 
+import (
+	config2 "github.com/go-kanna/di/internal/gen/testdata/emit/shapes/config"
+)
+
 // newBase initializes dependencies and constructs base.
 func newBase() *base {
 	db := newDB()
@@ -45,4 +49,11 @@ func newShared() *shared {
 // newEmpty initializes dependencies and constructs empty.
 func newEmpty() *empty {
 	return &empty{}
+}
+
+// newConfigured initializes dependencies and constructs configured.
+func newConfigured(config config2.Config) *configured {
+	return &configured{
+		cfg: config,
+	}
 }

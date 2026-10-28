@@ -250,6 +250,10 @@ func fieldsOf(s scan.Struct) ([]field, []diag.Diag) {
 			diags = append(diags, fieldDiag(sf, fmt.Errorf(
 				`di:"arg=%s": a parameter named %s would hide Go's own %s`, f.param, f.param, f.param)))
 			continue
+		case f.source == fromArg && f.param != "" && s.Named.Obj().Pkg().Scope().Lookup(f.param) != nil:
+			diags = append(diags, fieldDiag(sf, fmt.Errorf(
+				`di:"arg=%s": a parameter named %s would hide the package's own %s`, f.param, f.param, f.param)))
+			continue
 		}
 		fields = append(fields, f)
 	}
