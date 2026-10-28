@@ -164,10 +164,11 @@ type planner struct {
 	waits []wait
 }
 
-// callFrame is a call being worked out, and the path that led to it.
+// callFrame is a call being worked out, and the path that led to it. key is
+// the function's full name, and name how the container's source names it.
 type callFrame struct {
-	name string
-	via  []string
+	key, name string
+	via       []string
 }
 
 // planOf works out how the constructor of c builds it, in w. A plan that has
@@ -323,7 +324,7 @@ func (pl *planner) call(p provider, via []string) int {
 		return -1
 	}
 	name := pl.nameOf(p)
-	if i := slices.IndexFunc(pl.calling, func(f callFrame) bool { return f.name == name }); i >= 0 {
+	if i := slices.IndexFunc(pl.calling, func(f callFrame) bool { return f.key == key }); i >= 0 {
 		var cycle []string
 		for _, f := range pl.calling[i:] {
 			cycle = append(cycle, f.name)
@@ -336,7 +337,7 @@ func (pl *planner) call(p provider, via []string) int {
 		return -1
 	}
 
-	pl.calling = append(pl.calling, callFrame{name: name, via: via})
+	pl.calling = append(pl.calling, callFrame{key: key, name: name, via: via})
 	defer func() { pl.calling = pl.calling[:len(pl.calling)-1] }()
 
 	via = append(slices.Clip(via), name)

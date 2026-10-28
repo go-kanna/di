@@ -515,6 +515,37 @@ func run() {
 	}
 }
 
+func TestCommand_TellsPackagesOfOneNameApart(t *testing.T) {
+	t.Parallel()
+
+	// Both packages are named config, and the Load of one calls the Load of
+	// the other, which is no cycle.
+	dir := writeModule(t, map[string]string{
+		"infra/config/config.go": "package config\n\ntype Config struct{}\n\nfunc Load() Config { return Config{} }\n",
+		"app/config/config.go": `package config
+
+import infra "example.com/shop/infra/config"
+
+type Config struct{ DSN string }
+
+func Load(i infra.Config) Config { return Config{} }
+`,
+		"app/server.go": `package app
+
+import "example.com/shop/app/config"
+
+//kanna:container
+type server struct {
+	cfg config.Config
+}
+`,
+	})
+	if code, _, stderr := execute(t, filepath.Join(dir, "app")); code != cli.ExitOK || stderr != "" {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	build(t, dir)
+}
+
 func TestCommand_RefusesAWithThatWouldImportACycle(t *testing.T) {
 	t.Parallel()
 
