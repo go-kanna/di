@@ -11,12 +11,14 @@ import (
 )
 
 // embedded is a struct a container embeds, by value or by pointer, without
-// building it in place. It is resolved like any field, and its exported fields
-// then serve the container.
+// building it in place, or declares as a blank field, which is not stored. It
+// is resolved like any field, and its exported fields then serve the
+// container.
 type embedded struct {
 	f field
 
-	// via names the field from the container on, as "app.Deps".
+	// via names the field from the container on, as "app.Deps", or
+	// "app._ *infra.Deps" for a blank one.
 	via string
 
 	// byType holds the fields serving the container, by the key of their
@@ -72,20 +74,30 @@ func (pl *planner) collect(c container, top bool, path []string) {
 	}
 
 	for _, f := range c.fields {
-		if !f.Embedded || f.source == fromNowhere {
+		if f.source == fromNowhere {
 			continue
 		}
 		via := strings.Join(path, ".") + "." + f.Name
-		if inner, ok := pl.inlined(f); ok {
-			if slices.Contains(path, inner.Name) {
-				pl.diags = append(pl.diags, fieldDiag(f.Field,
-					fmt.Errorf("%s cannot be built in place: it embeds itself", inner.Name)))
+		switch {
+		case f.Embedded:
+			if inner, ok := pl.inlined(f); ok {
+				if slices.Contains(path, inner.Name) {
+					pl.diags = append(pl.diags, fieldDiag(f.Field,
+						fmt.Errorf("%s cannot be built in place: it embeds itself", inner.Name)))
+					continue
+				}
+				pl.collect(inner, false, append(slices.Clip(path), f.Name))
 				continue
 			}
-			pl.collect(inner, false, append(slices.Clip(path), f.Name))
-			continue
+			pl.embeds = append(pl.embeds, &embedded{f: f, via: via, byType: promotedOf(f.Type, pl.own)})
+		case f.blank():
+			// Nothing is stored in a blank field, so a struct there serves
+			// through its fields alone, without them or its methods promoted
+			// onto the container.
+			if byType := promotedOf(f.Type, pl.own); len(byType) > 0 {
+				pl.embeds = append(pl.embeds, &embedded{f: f, via: via + " " + pl.typeString(f.Type), byType: byType})
+			}
 		}
-		pl.embeds = append(pl.embeds, &embedded{f: f, via: via, byType: promotedOf(f.Type, pl.own)})
 	}
 }
 
@@ -202,7 +214,7 @@ func (pl *planner) fromEmbedded(t types.Type, k string, via []string) (int, bool
 			continue
 		}
 		for _, pr := range e.byType[k] {
-			cands = append(cands, candidate{desc: e.via + "." + strings.Join(pr.path, "."), e: e, pr: pr})
+			cands = append(cands, candidate{desc: e.desc(pr), e: e, pr: pr})
 		}
 	}
 	for _, ch := range pl.innerChosen[k] {
@@ -243,6 +255,16 @@ func (pl *planner) fromEmbedded(t types.Type, k string, via []string) (int, bool
 			"choose a provider with _ %s `di:\"with=...\"`, or take it with di:\"arg\"", pl.typeString(t))))
 		return -1, true
 	}
+}
+
+// desc names pr for a hint: App.Deps.DB for a field of an embedded struct, and
+// DB of App._ *Deps for one of a blank field, which has no name to select it
+// by.
+func (e *embedded) desc(pr promoted) string {
+	if e.f.blank() {
+		return strings.Join(pr.path, ".") + " of " + e.via
+	}
+	return e.via + "." + strings.Join(pr.path, ".")
 }
 
 // assigns lists every field the plan fills: those of the container, and those

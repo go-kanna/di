@@ -60,6 +60,91 @@ type App struct {
 			}},
 		},
 		{
+			// The struct is chosen, and its fields serve the container, but it
+			// is not stored: App gets no field or method of Deps.
+			name: "a blank struct chosen with with=",
+			src: `
+type Deps struct {
+	DB    *DB
+	Cache *Cache
+}
+
+func newDeps() (*Deps, func())         { return nil, nil }
+func newUsers(db *DB, c *Cache) *Users { return nil }
+
+//kanna:container
+type App struct {
+	_ *Deps ` + "`di:\"with=newDeps\"`" + `
+
+	Users *Users
+}
+`,
+			plans: map[string][]string{"App": {
+				"NewApp() (*App, func())",
+				"deps := newDeps() cleanup",
+				"db := deps.DB",
+				"cache := deps.Cache",
+				"users := newUsers(db, cache)",
+				"App{Users: users}",
+			}},
+		},
+		{
+			name: "a blank struct taken as an argument",
+			src: `
+type Deps struct {
+	DB    *DB
+	Cache *Cache
+}
+
+func newUsers(db *DB, c *Cache) *Users { return nil }
+
+//kanna:container
+type App struct {
+	_ Deps ` + "`di:\"arg\"`" + `
+
+	Users *Users
+}
+`,
+			plans: map[string][]string{"App": {
+				"NewApp(deps Deps) *App",
+				"db := deps.DB",
+				"cache := deps.Cache",
+				"users := newUsers(db, cache)",
+				"App{Users: users}",
+			}},
+		},
+		{
+			// What the container built in place draws on serves the one
+			// building it, as what it embeds does.
+			name: "a blank struct of a container built in place",
+			src: `
+type Deps struct{ DB *DB }
+
+func newUsers(db *DB) *Users { return nil }
+
+//kanna:container
+type server struct {
+	_ Deps ` + "`di:\"arg\"`" + `
+
+	users *Users
+}
+
+//kanna:container
+type wrapped struct {
+	*server
+
+	db *DB
+}
+`,
+			plans: map[string][]string{"wrapped": {
+				"newWrapped(deps Deps) *wrapped",
+				"db := deps.DB",
+				"users := newUsers(db)",
+				"server := &server{users: users}",
+				"wrapped{server: server, db: db}",
+			}},
+		},
+		{
 			// Deps is built from a *DB, which its own field cannot be.
 			name: "a struct from a provider",
 			src: `
@@ -372,6 +457,44 @@ type App struct {
 }
 `,
 			want: "error: 2 of what App embeds provide *DB\n  App.Deps.A.DB\n  App.Deps.B.DB\n",
+		},
+		{
+			name: "an embedded and a blank struct with one type",
+			src: `
+type (
+	A struct{ DB *DB }
+	B struct{ DB *DB }
+)
+
+func newUsers(db *DB) *Users { return nil }
+
+//kanna:container
+type App struct {
+	A   ` + "`di:\"arg\"`" + `
+	_ B ` + "`di:\"arg\"`" + `
+
+	Users *Users
+}
+`,
+			want: "error: 2 of what App embeds provide *DB\n  App.A.DB\n  DB of App._ B\n  via App.Users → newUsers\n",
+		},
+		{
+			// Deps is built from a *DB, which its own field cannot be, and
+			// the error is reported at the field declaring it.
+			name: "a blank struct does not serve what builds it",
+			src: `
+type Deps struct{ DB *DB }
+
+func newDeps(db *DB) *Deps { return nil }
+
+//kanna:container
+type App struct {
+	_ *Deps ` + "`di:\"with=newDeps\"`" + `
+
+	db *DB
+}
+`,
+			want: "x.go:21:2: error: nothing provides *DB, which newDeps needs\n  via App._ *Deps → newDeps\n",
 		},
 		{
 			name: "an embedded struct nothing provides",

@@ -391,20 +391,25 @@ func (pl *planner) ambiguous(t types.Type, via []string, ps []provider) {
 }
 
 // warnUnused warns about what the container takes or chooses without needing
-// it. A named field needs its own value, so only a blank one can go unused.
+// it. A named field needs its own value, so only a blank one can go unused;
+// a blank struct is used, too, when one of its fields is.
 func (pl *planner) warnUnused() {
 	for _, f := range pl.c.fields {
 		if !f.blank() || pl.used[typeKey(f.Type)] {
 			continue
 		}
+		var ofFields, norFields string
+		if len(promotedOf(f.Type, pl.own)) > 0 {
+			ofFields, norFields = " or any of its fields", ", nor any of its fields"
+		}
 		switch f.source {
 		case fromArg:
-			pl.diags = append(pl.diags, diag.Warningf(f.Pos, "nothing in %s needs the %s it takes with di:\"arg\"",
-				pl.c.Name, pl.typeString(f.Type)))
+			pl.diags = append(pl.diags, diag.Warningf(f.Pos, "nothing in %s needs the %s it takes with di:\"arg\"%s",
+				pl.c.Name, pl.typeString(f.Type), norFields))
 		case fromRef:
 			if pl.chosen[typeKey(f.Type)] != nil {
-				pl.diags = append(pl.diags, diag.Warningf(f.Pos, "nothing in %s needs %s, so its with= chooses nothing",
-					pl.c.Name, pl.typeString(f.Type)))
+				pl.diags = append(pl.diags, diag.Warningf(f.Pos, "nothing in %s needs %s%s, so its with= chooses nothing",
+					pl.c.Name, pl.typeString(f.Type), ofFields))
 			}
 		case fromType, fromNowhere:
 		}

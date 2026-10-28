@@ -1,6 +1,7 @@
 // Package shapes holds containers whose generated constructors show the shapes
-// the generator writes: a field of an embedded struct, a container built in
-// place, and variables kept clear of the names the package declares.
+// the generator writes: a field of an embedded struct or of a blank one, a
+// container built in place, and variables kept clear of the names the package
+// declares.
 package shapes
 
 //go:generate go tool kanna-di
@@ -51,6 +52,17 @@ type shared struct {
 
 	again *base
 }
+
+// drawn draws its users from a *Deps it chooses but does not keep.
+//
+//kanna:container
+type drawn struct {
+	_ *Deps `di:"with=newDeps"`
+
+	users *Users
+}
+
+func newDeps() *Deps { return &Deps{DB: newDB()} }
 
 // empty has nothing to build.
 //
