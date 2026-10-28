@@ -42,7 +42,7 @@ type Container struct {
 // Containers is containers on the structs of pkgs, spelled out, with the
 // diagnostics as strings.
 func Containers(fset *token.FileSet, pkgs []*packages.Package) ([]Container, []string) {
-	cs, ds := containers(fset, scan.Structs(pkgs))
+	cs, ds := containers(fset, scan.Structs(pkgs), "", outputOf(pkgs))
 
 	spelled := make([]Container, len(cs))
 	for i, c := range cs {
@@ -197,14 +197,14 @@ func planAll(fset *token.FileSet, pkgs []*packages.Package, module string) ([]pl
 	local := func(p *types.Package) bool {
 		return p.Path() == module || strings.HasPrefix(p.Path(), module+"/")
 	}
-	w := &world{x: newIndex(fset), local: local}
+	w := &world{x: newIndex(fset), local: local, output: outputOf(pkgs)}
 	for _, p := range pkgs {
 		if local(p.Types) {
 			w.refs = append(w.refs, p.Types)
 		}
 	}
 
-	cs, ds := containers(fset, scan.Structs(pkgs))
+	cs, ds := containers(fset, scan.Structs(pkgs), "", w.output)
 	w.containers = make(map[string]container, len(cs))
 	for _, c := range cs {
 		w.containers[typeKey(c.Named)] = c

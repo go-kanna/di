@@ -6,7 +6,6 @@ import (
 	"go/scanner"
 	"go/token"
 	"go/types"
-	"path/filepath"
 	"strings"
 	"unicode"
 
@@ -71,11 +70,14 @@ func (f field) paramName() string {
 
 // containers returns the structs marked //kanna:container that a constructor
 // can be written for, in the order scan reports them, and says what is wrong
-// with the rest.
+// with the rest. output holds the files an earlier run wrote, and dir is the
+// directory positions in hints are written relative to; see clash.
 //
 // A struct carrying di tags without the directive is warned about: nothing
 // would be generated for it, and nothing else would say so.
-func containers(fset *token.FileSet, structs []scan.Struct) ([]container, []diag.Diag) {
+func containers(
+	fset *token.FileSet, structs []scan.Struct, dir string, output map[string]bool,
+) ([]container, []diag.Diag) {
 	var (
 		found []container
 		diags []diag.Diag
@@ -96,7 +98,7 @@ func containers(fset *token.FileSet, structs []scan.Struct) ([]container, []diag
 			found = append(found, c)
 		}
 	}
-	return clash(fset, found, diags)
+	return clash(fset, found, diags, dir, output)
 }
 
 // containerOf reads s, marked by d, as a container.
@@ -290,9 +292,12 @@ func conflicts(s scan.Struct, fields []field) []diag.Diag {
 
 // clash adds to diags a constructor name another one of its package takes, or
 // one the package already declares, and leaves out the containers it applies
-// to. What an earlier run generated does not count, since it is about to be
-// replaced.
-func clash(fset *token.FileSet, cs []container, diags []diag.Diag) ([]container, []diag.Diag) {
+// to. What an earlier run generated, in the files of output, does not count,
+// since it is about to be replaced. Positions in hints are written relative to
+// dir, as diag.Write writes those of the diagnostics.
+func clash(
+	fset *token.FileSet, cs []container, diags []diag.Diag, dir string, output map[string]bool,
+) ([]container, []diag.Diag) {
 	type key struct{ pkg, name string }
 	taken := make(map[key]container)
 	var kept []container
@@ -315,7 +320,8 @@ func clash(fset *token.FileSet, cs []container, diags []diag.Diag) ([]container,
 			if obj == nil {
 				continue
 			}
-			if pos := fset.Position(obj.Pos()); !generated(pos.Filename) {
+			if pos := fset.Position(obj.Pos()); !output[pos.Filename] {
+				pos.Filename = diag.ShortPath(dir, pos.Filename)
 				diags = append(diags, diag.Errorf(c.Pos, "%s, the constructor of %s, is already declared", name, c.Name).
 					WithHints(fmt.Sprintf("at %s; rename one, or give the constructor a name with name=", pos)))
 				ok = false
@@ -326,12 +332,6 @@ func clash(fset *token.FileSet, cs []container, diags []diag.Diag) ([]container,
 		}
 	}
 	return kept, diags
-}
-
-// generated reports whether filename is one kanna-di writes.
-func generated(filename string) bool {
-	base := filepath.Base(filename)
-	return base == outputFile || base == testOutputFile
 }
 
 // defaultCtor names the constructor of the struct called name: New and the

@@ -71,7 +71,7 @@ func run(dir string, cfg config, patterns []string) ([]output.Change, []diag.Dia
 	// first run, before the generated code does. Its types have to come from
 	// the same load as the rest, or none of its types would be those the
 	// containers know, so the packages are loaded again together.
-	if extra := unloaded(set, module); len(extra) > 0 {
+	if extra := unloaded(set, module, dir); len(extra) > 0 {
 		if len(patterns) == 0 {
 			patterns = []string{"."}
 		}
@@ -106,7 +106,8 @@ func generate(
 		}
 	}
 
-	cs, diags := containers(set.Fset, scan.Structs(roots))
+	written := outputOf(roots)
+	cs, diags := containers(set.Fset, scan.Structs(roots), dir, written)
 	loadDiags := withoutPendingCalls(set, cs)
 	if diag.HasErrors(loadDiags) {
 		for _, path := range set.SetAside {
@@ -124,6 +125,7 @@ func generate(
 		local:      func(p *types.Package) bool { return hasKey(module, p.Path()) },
 		dir:        dir,
 		containers: make(map[string]container, len(cs)),
+		output:     written,
 	}
 	for _, p := range reachable(set.Packages) {
 		if w.local(p) {
@@ -140,6 +142,21 @@ func generate(
 	}
 	changes, ds := files(roots, planned)
 	return changes, append(diags, ds...)
+}
+
+// outputOf returns the files of roots that an earlier run wrote, by absolute
+// path: those named as kanna-di names its output and carrying the generated
+// header, which a hand-written file of the name does not.
+func outputOf(roots []*packages.Package) map[string]bool {
+	written := make(map[string]bool)
+	for _, pkg := range roots {
+		for path := range packages.GeneratedFiles(pkg) {
+			if base := filepath.Base(path); base == outputFile || base == testOutputFile {
+				written[path] = true
+			}
+		}
+	}
+	return written
 }
 
 // files renders the plans into the files they go to, and removes what an
@@ -266,9 +283,9 @@ func referenced(pkg *packages.Package, filename, expr string) string {
 
 // unloaded returns the packages of the module that a with= of the containers
 // of set may name, and that are not among the packages loaded with set, nor
-// imported by them.
-func unloaded(set packages.Set, module map[string]string) []string {
-	cs, _ := containers(set.Fset, scan.Structs(set.Packages))
+// imported by them. dir is where the run works.
+func unloaded(set packages.Set, module map[string]string, dir string) []string {
+	cs, _ := containers(set.Fset, scan.Structs(set.Packages), dir, outputOf(set.Packages))
 	loaded := make(map[string]bool)
 	for _, p := range reachable(set.Packages) {
 		loaded[p.Path()] = true

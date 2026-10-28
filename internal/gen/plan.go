@@ -31,10 +31,12 @@ type world struct {
 	// for a container embedding one to build it in place.
 	containers map[string]container
 
-	// ours are the constructors the run generates, and stale the names an
-	// earlier run's output gives them and their must variants; see plans.
-	ours  []*ourCtor
-	stale map[string]bool
+	// ours are the constructors the run generates; see plans.
+	ours []*ourCtor
+
+	// output holds the files an earlier run wrote in the packages of the run.
+	// What they declare is passed over, as it is about to be replaced.
+	output map[string]bool
 }
 
 // plan is how the constructor of a container builds it.
@@ -294,9 +296,8 @@ func (pl *planner) candidates(pkg *types.Package, t types.Type, own bool) ([]pro
 	}
 	for _, p := range all {
 		name := pl.nameOf(p)
-		_, fresh := pl.w.isOurs(p)
 		switch {
-		case !fresh && pl.w.stale[p.fn.FullName()]:
+		case pl.w.output[p.pos.Filename]:
 		case p.bad != "":
 			near = append(near, fmt.Sprintf("%s returns %s but cannot be a provider: %s", name, pl.typeString(t), p.bad))
 		case !own && !p.fn.Exported():

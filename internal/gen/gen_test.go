@@ -491,6 +491,21 @@ func (*Repository) Find(string) error { return nil }
 	}
 }
 
+func TestCommand_PointsAtAConstructorDeclaredByHand(t *testing.T) {
+	t.Parallel()
+
+	dir := writeModule(t, map[string]string{
+		"app/server.go": "package app\n\n//kanna:container\ntype server struct{}\n",
+		"app/new.go":    "package app\n\nfunc newServer() *server { return nil }\n",
+	})
+	code, _, stderr := execute(t, filepath.Join(dir, "app"))
+	want := "./server.go:4:6: error: newServer, the constructor of server, is already declared\n" +
+		"  at ./new.go:3:6; rename one, or give the constructor a name with name=\n"
+	if code != cli.ExitFailure || !strings.Contains(stderr, want) {
+		t.Errorf("exit %d, stderr %q; want %d and %q", code, stderr, cli.ExitFailure, want)
+	}
+}
+
 // with returns the files of base and more together.
 func with(base, more map[string]string) map[string]string {
 	files := maps.Clone(base)
