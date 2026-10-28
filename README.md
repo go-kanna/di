@@ -208,13 +208,13 @@ named field, `with=` also stores the value; on `_`, it only chooses, and a struc
 
 `//kanna:container` marks a struct, and every field of it is resolved unless its tag says otherwise:
 
-| Field             | Named                                                             | `_`                                    |
-|-------------------|-------------------------------------------------------------------|----------------------------------------|
-| no tag            | resolve the field's type and store the value                      | error                                  |
-| `di:"with=<ref>"` | resolve it with ref, which serves the type in the whole container | choose ref for the type, store nothing |
-| `di:"arg"`        | take it as a parameter, named after its type, and store it        | take it as a parameter only            |
-| `di:"arg=<name>"` | the same, with the parameter's name spelled out                   | the same, with the parameter's name    |
-| `di:"-"`          | leave the field alone                                             | error                                  |
+| Field             | Named                                                             | `_`                                             |
+|-------------------|-------------------------------------------------------------------|-------------------------------------------------|
+| no tag            | resolve the field's type and store the value                      | a struct: resolve it, store nothing; else error |
+| `di:"with=<ref>"` | resolve it with ref, which serves the type in the whole container | choose ref for the type, store nothing          |
+| `di:"arg"`        | take it as a parameter, named after its type, and store it        | take it as a parameter only                     |
+| `di:"arg=<name>"` | the same, with the parameter's name spelled out                   | the same, with the parameter's name             |
+| `di:"-"`          | leave the field alone                                             | error                                           |
 
 A parameter keeps its name, and an import the generated file needs under that name is renamed instead; a name spelled
 out that the package declares at the top level, or that Go does, is an error.
@@ -242,12 +242,13 @@ type App struct {
 
 A struct, or pointer to one, in a `_` field serves the container the same way without being stored, so the container
 gets neither the struct nor the fields and methods embedding would promote onto it. It is resolved when it, or one of
-its fields, is needed. A use case draws on what the infrastructure bundles this way:
+its fields, is needed: without a tag as any field is, or taken or chosen with `di:"arg"` or `with=`. A use case draws on
+what the infrastructure bundles this way:
 
 ```go
 //kanna:container
 type DeleteTodo struct {
-	_ *infra.Deps `di:"with=infra.NewDeps"` // its Transactor and Todos fill the fields below
+	_ *infra.Deps // infra.NewDeps provides it; its Transactor and Todos fill the fields below
 
 	transactor tx.Transactor
 	todos      repository.Todo

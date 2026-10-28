@@ -245,6 +245,12 @@ func TestContainers_Diagnostics(t *testing.T) {
 			want: "x.go:6:2: error: a blank field must say what it declares",
 		},
 		{
+			// Unlike a struct, it would serve nothing.
+			name: "blank interface without a tag",
+			src:  "\n//kanna:container\ntype c struct {\n\t_ Reader\n}\n",
+			want: "x.go:6:2: error: a blank field must say what it declares",
+		},
+		{
 			name: "blank skipped",
 			src:  "\n//kanna:container\ntype c struct {\n\t_ Env `di:\"-\"`\n}\n",
 			want: `di:"-" on a blank field says nothing; remove the field (field _)`,

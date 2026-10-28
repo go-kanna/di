@@ -55,11 +55,11 @@ type shared struct {
 	again *base
 }
 
-// drawn draws its users from a *Deps it chooses but does not keep.
+// drawn draws its users from a *Deps it finds, newDeps, but does not keep.
 //
 //kanna:container
 type drawn struct {
-	_ *Deps `di:"with=newDeps"`
+	_ *Deps
 
 	users *Users
 }

@@ -224,8 +224,8 @@ func (pl *planner) choose(f field) {
 // on.
 func (pl *planner) need(t types.Type, via []string) int {
 	k := typeKey(t)
+	pl.used[k] = true
 	if s, ok := pl.byType[k]; ok {
-		pl.used[k] = true
 		return s
 	}
 	s := pl.find(t, k, via)
@@ -245,11 +245,9 @@ func (pl *planner) busyWith(k string) bool {
 // find works out the step for t, looking in the order the README gives.
 func (pl *planner) find(t types.Type, k string, via []string) int {
 	if i, ok := pl.args[k]; ok {
-		pl.used[k] = true
 		return pl.add(step{kind: paramStep, typ: t, name: pl.pl.params[i].name, param: i})
 	}
 	if p, ok := pl.chosen[k]; ok {
-		pl.used[k] = true
 		if p == nil {
 			return -1 // reported at the with=
 		}
@@ -440,7 +438,11 @@ func (pl *planner) warnUnused() {
 				pl.diags = append(pl.diags, diag.Warningf(f.Pos, "nothing in %s needs %s%s, so its with= chooses nothing",
 					pl.c.Name, pl.typeString(f.Type), ofFields))
 			}
-		case fromType, fromNowhere:
+		case fromType:
+			// Only a struct with fields to serve gets here; see fieldsOf.
+			pl.diags = append(pl.diags, diag.Warningf(f.Pos, "nothing in %s needs %s%s",
+				pl.c.Name, pl.typeString(f.Type), ofFields))
+		case fromNowhere:
 		}
 	}
 }

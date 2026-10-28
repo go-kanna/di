@@ -235,7 +235,9 @@ func fieldsOf(s scan.Struct) ([]field, []diag.Diag) {
 		f := field{Field: sf, tag: t}
 
 		switch {
-		case f.blank() && f.source == fromType:
+		case f.blank() && f.source == fromType && len(promotedOf(sf.Type, s.Named.Obj().Pkg())) == 0:
+			// Resolved like any field, a blank struct serves the container
+			// through its fields; anything else would be resolved for nothing.
 			diags = append(diags, fieldDiag(sf, errors.New(
 				`a blank field must say what it declares: di:"arg" or di:"with=<provider>"`)))
 			continue
