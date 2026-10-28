@@ -364,6 +364,90 @@ func TestCommand_Patterns(t *testing.T) {
 	readFile(t, filepath.Join(dir, "app", "di_gen.go"))
 }
 
+func TestCommand_AWithOfAnExternalTestPackage(t *testing.T) {
+	t.Parallel()
+
+	// NewFake is declared for the tests of app, in-package and external, so
+	// the container of app_test can choose it.
+	dir := writeModule(t, with(shop, map[string]string{
+		"app/server.go": server,
+		"app/export_test.go": `package app
+
+import "example.com/shop/user"
+
+type fake struct{}
+
+func (fake) Find(string) error { return nil }
+
+func NewFake() user.Repository { return fake{} }
+`,
+		"app/app_test.go": `package app_test
+
+import (
+	"testing"
+
+	"example.com/shop/usecase"
+	"example.com/shop/user"
+)
+
+//kanna:container
+type env struct {
+	_ user.Repository ` + "`di:\"with=app.NewFake\"`" + `
+
+	getUser *usecase.GetUser
+}
+
+func TestEnv(t *testing.T) { _ = newEnv() }
+`,
+	}))
+	app := filepath.Join(dir, "app")
+
+	if code, _, stderr := execute(t, app); code != cli.ExitOK {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if got := readFile(t, filepath.Join(app, "di_gen_test.go")); !strings.Contains(got, "repo := app.NewFake()") {
+		t.Errorf("di_gen_test.go does not call app.NewFake:\n%s", got)
+	}
+	gotest(t, dir, "./app")
+}
+
+func TestCommand_RefusesAWithNamingWhatOnlyTestsCompile(t *testing.T) {
+	t.Parallel()
+
+	// Loaded with ./..., postgres comes with its test files, whose NewFake
+	// only the tests of postgres compile.
+	dir := writeModule(t, with(shop, map[string]string{
+		"app/server.go": `package app
+
+import (
+	"example.com/shop/usecase"
+	"example.com/shop/user"
+)
+
+//kanna:container
+type server struct {
+	_ user.Repository ` + "`di:\"with=postgres.NewFake\"`" + `
+
+	getUser *usecase.GetUser
+}
+`,
+		"postgres/fake_test.go": `package postgres
+
+type Fake struct{}
+
+func NewFake() *Fake { return &Fake{} }
+
+func (*Fake) Find(string) error { return nil }
+`,
+	}))
+	code, _, stderr := execute(t, dir, "./...")
+	want := "app/server.go:10:2: error: postgres.NewFake is declared in a _test.go file, " +
+		"which only tests compile (field _)\n"
+	if code != cli.ExitFailure || !strings.Contains(stderr, want) {
+		t.Errorf("exit %d, stderr %q; want %d and %q", code, stderr, cli.ExitFailure, want)
+	}
+}
+
 // with returns the files of base and more together.
 func with(base, more map[string]string) map[string]string {
 	files := maps.Clone(base)

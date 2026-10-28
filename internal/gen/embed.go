@@ -179,7 +179,7 @@ func (pl *planner) chooseInner(f field, inner container) {
 		refs = append(slices.Clip(refs), home)
 	}
 	ch := innerChoice{via: inner.Name + "." + f.Name + " with=" + f.ref.String()}
-	if p, err := pl.w.x.resolve(f.ref, f.Type, pl.own, refs); err == nil {
+	if p, err := pl.w.x.resolve(f.ref, f.Type, pl.own, pl.c.test, refs); err == nil {
 		ch.p = &p
 	}
 	k := typeKey(f.Type)

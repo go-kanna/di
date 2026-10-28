@@ -21,13 +21,15 @@ func (e refError) Error() string {
 }
 
 // resolve finds the provider r names for a value of type want, in a container
-// of package own.
+// of package own; test says the container is one of own's tests.
 //
 // A bare name is a function of own. A qualified one is looked for in pkgs, the
 // packages with= may name: those of the user's module and the one declaring
 // want. The function's result only has to be assignable to want, which is how
 // an interface gets its implementation.
-func (x *index) resolve(r ref, want types.Type, own *types.Package, pkgs []*types.Package) (provider, error) {
+func (x *index) resolve(
+	r ref, want types.Type, own *types.Package, test bool, pkgs []*types.Package,
+) (provider, error) {
 	pkg := own
 	if r.pkg != "" {
 		var err error
@@ -71,6 +73,8 @@ func (x *index) resolve(r ref, want types.Type, own *types.Package, pkgs []*type
 			" cannot be a provider: its first result must be a type declared in a package, or a pointer to one"}
 	case p.bad != "":
 		return provider{}, refError{msg: name + " cannot be a provider: " + p.bad}
+	case !p.serves(own, test):
+		return provider{}, refError{msg: name + " is declared in a _test.go file, which only tests compile"}
 	}
 
 	if typeKey(p.result) != typeKey(want) && !types.AssignableTo(p.result, want) {

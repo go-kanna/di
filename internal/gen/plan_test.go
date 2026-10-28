@@ -167,6 +167,12 @@ func TestPlans_Diagnostics(t *testing.T) {
 			want: "  fakeUsers returns *Users but is declared in a _test.go file, which only tests compile\n",
 		},
 		{
+			name: "a with= only tests compile",
+			body: "_ *Users `di:\"with=fakeUsers\"`\nusers *Users",
+			test: "func fakeUsers() *Users { return nil }",
+			want: "x.go:13:2: error: fakeUsers is declared in a _test.go file, which only tests compile (field _)",
+		},
+		{
 			name: "a type of another module",
 			body: "log *slog.Logger",
 			want: "x.go:13:2: error: nothing provides *slog.Logger\n" +

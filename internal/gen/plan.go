@@ -204,7 +204,7 @@ func (pl *planner) choose(f field) {
 	if home := homeOf(f.Type); home != nil {
 		refs = append(slices.Clip(refs), home)
 	}
-	p, err := pl.w.x.resolve(f.ref, f.Type, pl.own, refs)
+	p, err := pl.w.x.resolve(f.ref, f.Type, pl.own, pl.c.test, refs)
 	if err != nil {
 		d := fieldDiag(f.Field, err)
 		if e, ok := errors.AsType[refError](err); ok && e.hint != "" {
@@ -301,7 +301,7 @@ func (pl *planner) candidates(pkg *types.Package, t types.Type, own bool) ([]pro
 			near = append(near, fmt.Sprintf("%s returns %s but cannot be a provider: %s", name, pl.typeString(t), p.bad))
 		case !own && !p.fn.Exported():
 			near = append(near, fmt.Sprintf("%s returns %s but is not exported", name, pl.typeString(t)))
-		case p.test && !pl.c.test:
+		case !p.serves(pl.own, pl.c.test):
 			near = append(near, fmt.Sprintf("%s returns %s but is declared in a _test.go file, which only tests compile",
 				name, pl.typeString(t)))
 		default:
