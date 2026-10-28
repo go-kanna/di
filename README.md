@@ -149,9 +149,9 @@ any other named type — or a pointer to one:
 
 A variadic parameter is left empty. A provider is called once per constructor, and everything that needs its result
 shares it. A `string` or a `[]byte` is never looked up, so that a function returning one for its own reasons is not
-taken for a provider; give such a value a type of its own, such as `type DSN string`, or take it with `di:"arg"`. A must
-variant beside the function it wraps, `MustNewDeps` beside `NewDeps`, is passed over for that function, so that the
-error reaches the constructor instead of a panic.
+taken for a provider; give such a value a type of its own, such as `type DSN string`, or take it with
+`di:"arg=<name>"`. A must variant beside the function it wraps, `MustNewDeps` beside `NewDeps`, is passed over for that
+function, so that the error reaches the constructor instead of a panic.
 
 For each type it needs, kanna-di takes the first of these that has one:
 
