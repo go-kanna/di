@@ -356,7 +356,10 @@ func (pl *planner) add(s step) int {
 	return len(pl.pl.steps) - 1
 }
 
-// missing reports that nothing provides t.
+// missing reports that nothing provides t. A field needing t itself may be
+// one the program sets later, which di:"-" says, but not a blank one, which
+// holds no value. The hint names the field: it may be one of a container built
+// in place, reported at the field embedding it.
 func (pl *planner) missing(t types.Type, via []string, near []string) {
 	msg := "nothing provides " + pl.typeString(t)
 	if len(via) > 1 {
@@ -370,9 +373,13 @@ func (pl *planner) missing(t types.Type, via []string, near []string) {
 	if home := homeOf(t); home != nil && home.Path() != pl.own.Path() && !pl.w.local(home) {
 		d = d.WithHints(home.Path() + " is not in your module, so kanna-di does not look there")
 	}
-	pl.diags = append(pl.diags, d.WithHints(fmt.Sprintf(
+	d = d.WithHints(fmt.Sprintf(
 		`return one from a function in package %s, take it with di:"arg", or choose a provider with di:"with=..."`,
-		pl.own.Name())))
+		pl.own.Name()))
+	if len(via) == 1 && pl.root.Name != "_" {
+		d = d.WithHints(fmt.Sprintf(`or leave %s at its zero value with di:"-"`, via[0]))
+	}
+	pl.diags = append(pl.diags, d)
 }
 
 // nearly lists, for a hint, the providers in reach of *t for a t, or of t for

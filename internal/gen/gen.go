@@ -83,13 +83,27 @@ func run(dir string, cfg config, patterns []string) ([]output.Change, []diag.Dia
 	changes, diags := generate(set, targets, module, dir)
 	if !diag.HasErrors(diags) && !slices.ContainsFunc(changes, func(c output.Change) bool { return !c.Remove }) {
 		// Nothing to stop for: a go:generate line left behind does no harm.
-		in := strings.Join(patterns, " ")
-		if in == "" {
-			in = "."
-		}
-		diags = append(diags, diag.Warningf(token.Position{}, "no struct is marked //kanna:%s in %s", directiveKey, in))
+		diags = append(diags, diag.Warningf(token.Position{}, "no struct is marked //kanna:%s in %s",
+			directiveKey, where(targets, patterns)))
 	}
 	return changes, diags
+}
+
+// where names the packages of targets for a message, by import path: under
+// go generate ./..., each run is given "." alone. An external test package
+// goes with the package it tests. A run that matched no package names its
+// patterns instead.
+func where(targets map[string]bool, patterns []string) string {
+	var paths []string
+	for _, path := range slices.Sorted(maps.Keys(targets)) {
+		if tested, ok := strings.CutSuffix(path, "_test"); !ok || !targets[tested] {
+			paths = append(paths, path)
+		}
+	}
+	if len(paths) == 0 {
+		paths = patterns
+	}
+	return strings.Join(paths, ", ")
 }
 
 // generate works out the changes for the packages of set that targets names:

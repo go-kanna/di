@@ -81,7 +81,8 @@ func TestPlans_NotExported(t *testing.T) {
 	_, diags := gen.Plans(set.Fset, set.Packages, module)
 	want := "error: nothing provides *usecase.Audit\n" +
 		"  usecase.newAudit returns *usecase.Audit but is not exported\n" +
-		`  return one from a function in package broken, take it with di:"arg", or choose a provider with di:"with=..."`
+		`  return one from a function in package broken, take it with di:"arg", or choose a provider with di:"with=..."` +
+		"\n" + `  or leave auditing.audit at its zero value with di:"-"`
 	if len(diags) != 1 || !strings.HasSuffix(diags[0], want) {
 		t.Errorf("diagnostics = %q, want one ending in %q", diags, want)
 	}
@@ -277,7 +278,7 @@ func TestPlans_Diagnostics(t *testing.T) {
 
 import "log/slog"
 
-type (DB struct{}; Users struct{}; App struct{}; Env string; Repo interface{ Find() }; impl struct{})
+type (DB struct{ dsn string }; Users struct{}; App struct{}; Env string; Repo interface{ Find() }; impl struct{})
 
 func (impl) Find() {}
 
@@ -297,6 +298,55 @@ type c struct {
 				t.Errorf("diagnostics =\n%s\nwant one to say\n%s", strings.Join(diags, "\n"), tt.want)
 			}
 		})
+	}
+}
+
+func TestPlans_HintToLeaveAFieldAtItsZeroValue(t *testing.T) {
+	t.Parallel()
+
+	_, diags := plans(t, map[string]string{"x.go": `package test
+
+type (
+	Mutex struct{ state int }
+	Clock struct{ now int }
+	DB    struct{ dsn string }
+	Deps  struct{ DB *DB }
+	Users struct{}
+)
+
+func newUsers(clock Clock) *Users { return nil }
+
+//kanna:container
+type base struct {
+	mu    Mutex
+	users *Users
+}
+
+//kanna:container
+type c struct {
+	*base
+
+	_  Deps
+	db *DB
+}
+`})
+
+	// The hint is for a field needing the type itself, named as it may be a
+	// field of a container built in place; neither a dependency of a field
+	// nor a blank field is left at a zero value.
+	const hint = `  return one from a function in package test, take it with di:"arg", ` +
+		`or choose a provider with di:"with=..."`
+	want := []string{
+		"x.go:15:2: error: nothing provides Mutex\n" + hint + "\n" +
+			`  or leave base.mu at its zero value with di:"-"`,
+		"x.go:16:2: error: nothing provides Clock, which newUsers needs\n  via base.users → newUsers\n" + hint,
+		"x.go:21:3: error: nothing provides Mutex\n" + hint + "\n" +
+			`  or leave c.base.mu at its zero value with di:"-"`,
+		"x.go:21:3: error: nothing provides Clock, which newUsers needs\n  via c.base.users → newUsers\n" + hint,
+		"x.go:23:2: error: nothing provides Deps\n" + hint,
+	}
+	if !slices.Equal(diags, want) {
+		t.Errorf("diagnostics =\n%s\nwant\n%s", strings.Join(diags, "\n"), strings.Join(want, "\n"))
 	}
 }
 
@@ -325,6 +375,46 @@ type c struct {
 
 	// The Repo chosen and the *impl asked for come from one call.
 	want := []string{"newC() *c", "repo := newRepo()", "c{repo: repo, impl: repo}"}
+	if !slices.Equal(got["c"], want) || len(diags) > 0 {
+		t.Errorf("plan =\n%s\nwant\n%s\ndiagnostics %q", strings.Join(got["c"], "\n"), strings.Join(want, "\n"), diags)
+	}
+}
+
+func TestPlans_LeaveAStructWithoutFieldsAtItsZeroValue(t *testing.T) {
+	t.Parallel()
+
+	got, diags := plans(t, map[string]string{"x.go": `package test
+
+type (
+	UnimplementedServer struct{}
+	Marker              struct{}
+	Token               struct{}
+	Users               struct{}
+)
+
+func newMarker() Marker { return Marker{} }
+func newUsers() *Users  { return nil }
+
+//kanna:container
+type c struct {
+	UnimplementedServer
+
+	none   struct{}
+	marker Marker ` + "`di:\"with=newMarker\"`" + `
+	token  Token  ` + "`di:\"arg\"`" + `
+	users  *Users
+}
+`})
+
+	// Nothing provides UnimplementedServer or struct{}, and nothing has to:
+	// their zero value is the only one they have. A tag still says where the
+	// value comes from, and a pointer to such a struct may be nil.
+	want := []string{
+		"newC(token Token) *c",
+		"marker := newMarker()",
+		"users := newUsers()",
+		"c{marker: marker, token: token, users: users}",
+	}
 	if !slices.Equal(got["c"], want) || len(diags) > 0 {
 		t.Errorf("plan =\n%s\nwant\n%s\ndiagnostics %q", strings.Join(got["c"], "\n"), strings.Join(want, "\n"), diags)
 	}
