@@ -304,11 +304,50 @@ func TestCommand_RemovesWhatNoContainerNeeds(t *testing.T) {
 	app := filepath.Join(dir, "app")
 
 	code, _, stderr := execute(t, app)
-	if want := "warning: no struct is marked //kanna:container in .\n"; code != cli.ExitOK || stderr != want {
+	want := "warning: no struct is marked //kanna:container in example.com/shop/app\n"
+	if code != cli.ExitOK || stderr != want {
 		t.Errorf("exit %d, stderr %q; want %d and %q", code, stderr, cli.ExitOK, want)
 	}
 	if _, err := os.Stat(filepath.Join(app, "di_gen.go")); !os.IsNotExist(err) {
 		t.Errorf("di_gen.go is still there: %v", err)
+	}
+}
+
+func TestCommand_NamesThePackagesWithoutContainers(t *testing.T) {
+	t.Parallel()
+
+	// An external test package goes with the package it tests.
+	dir := writeModule(t, with(shop, map[string]string{
+		"user/user_test.go": "package user_test\n",
+		"docs/README.md":    "No Go here.\n",
+	}))
+
+	tests := []struct {
+		name     string
+		patterns []string
+		want     string
+	}{
+		{
+			name:     "packages",
+			patterns: []string{"./..."},
+			want: "warning: no struct is marked //kanna:container in example.com/shop/config, " +
+				"example.com/shop/postgres, example.com/shop/usecase, example.com/shop/user\n",
+		},
+		{
+			name:     "no package",
+			patterns: []string{"./docs/..."},
+			want:     "warning: no struct is marked //kanna:container in ./docs/...\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			code, _, stderr := execute(t, dir, tt.patterns...)
+			if code != cli.ExitOK || stderr != tt.want {
+				t.Errorf("exit %d, stderr %q; want %d and %q", code, stderr, cli.ExitOK, tt.want)
+			}
+		})
 	}
 }
 
