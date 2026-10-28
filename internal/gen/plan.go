@@ -31,10 +31,12 @@ type world struct {
 	// for a container embedding one to build it in place.
 	containers map[string]container
 
-	// ours are the constructors the run generates, and stale the names an
-	// earlier run's output gives them and their must variants; see plans.
-	ours  []*ourCtor
-	stale map[string]bool
+	// ours are the constructors the run generates; see plans.
+	ours []*ourCtor
+
+	// output holds the files an earlier run wrote in the packages of the run.
+	// What they declare is passed over, as it is about to be replaced.
+	output map[string]bool
 }
 
 // plan is how the constructor of a container builds it.
@@ -162,10 +164,11 @@ type planner struct {
 	waits []wait
 }
 
-// callFrame is a call being worked out, and the path that led to it.
+// callFrame is a call being worked out, and the path that led to it. key is
+// the function's full name, and name how the container's source names it.
 type callFrame struct {
-	name string
-	via  []string
+	key, name string
+	via       []string
 }
 
 // planOf works out how the constructor of c builds it, in w. A plan that has
@@ -204,10 +207,10 @@ func (pl *planner) choose(f field) {
 	if home := homeOf(f.Type); home != nil {
 		refs = append(slices.Clip(refs), home)
 	}
-	p, err := pl.w.x.resolve(f.ref, f.Type, pl.own, refs)
+	p, err := pl.w.x.resolve(f.ref, f.Type, pl.own, pl.c.test, refs)
 	if err != nil {
 		d := fieldDiag(f.Field, err)
-		if e, ok := errors.AsType[*refError](err); ok && e.hint != "" {
+		if e, ok := errors.AsType[refError](err); ok && e.hint != "" {
 			d = d.WithHints(e.hint)
 		}
 		pl.diags = append(pl.diags, d)
@@ -268,7 +271,7 @@ func (pl *planner) find(t types.Type, k string, via []string) int {
 
 	switch len(ps) {
 	case 0:
-		pl.missing(t, via, near)
+		pl.missing(t, via, append(near, pl.nearly(t)...))
 		return -1
 	case 1:
 		return pl.call(ps[0], via)
@@ -294,14 +297,13 @@ func (pl *planner) candidates(pkg *types.Package, t types.Type, own bool) ([]pro
 	}
 	for _, p := range all {
 		name := pl.nameOf(p)
-		_, fresh := pl.w.isOurs(p)
 		switch {
-		case !fresh && pl.w.stale[p.fn.FullName()]:
+		case pl.w.output[p.pos.Filename]:
 		case p.bad != "":
 			near = append(near, fmt.Sprintf("%s returns %s but cannot be a provider: %s", name, pl.typeString(t), p.bad))
 		case !own && !p.fn.Exported():
 			near = append(near, fmt.Sprintf("%s returns %s but is not exported", name, pl.typeString(t)))
-		case p.test && !pl.c.test:
+		case !p.serves(pl.own, pl.c.test):
 			near = append(near, fmt.Sprintf("%s returns %s but is declared in a _test.go file, which only tests compile",
 				name, pl.typeString(t)))
 		default:
@@ -322,7 +324,7 @@ func (pl *planner) call(p provider, via []string) int {
 		return -1
 	}
 	name := pl.nameOf(p)
-	if i := slices.IndexFunc(pl.calling, func(f callFrame) bool { return f.name == name }); i >= 0 {
+	if i := slices.IndexFunc(pl.calling, func(f callFrame) bool { return f.key == key }); i >= 0 {
 		var cycle []string
 		for _, f := range pl.calling[i:] {
 			cycle = append(cycle, f.name)
@@ -335,7 +337,7 @@ func (pl *planner) call(p provider, via []string) int {
 		return -1
 	}
 
-	pl.calling = append(pl.calling, callFrame{name: name, via: via})
+	pl.calling = append(pl.calling, callFrame{key: key, name: name, via: via})
 	defer func() { pl.calling = pl.calling[:len(pl.calling)-1] }()
 
 	via = append(slices.Clip(via), name)
@@ -373,6 +375,33 @@ func (pl *planner) missing(t types.Type, via []string, near []string) {
 	pl.diags = append(pl.diags, d.WithHints(fmt.Sprintf(
 		`return one from a function in package %s, take it with di:"arg", or choose a provider with di:"with=..."`,
 		pl.own.Name())))
+}
+
+// nearly lists, for a hint, the providers in reach of *t for a t, or of t for
+// a *t: a pointer-or-value mismatch is the likely reason nothing provides t.
+func (pl *planner) nearly(t types.Type) []string {
+	var other types.Type
+	if p, ok := types.Unalias(t).(*types.Pointer); ok {
+		other = p.Elem()
+	} else {
+		other = types.NewPointer(t)
+	}
+	if !providable(other) {
+		return nil
+	}
+
+	pkgs := []*types.Package{pl.own}
+	if home := homeOf(t); home != nil && home.Path() != pl.own.Path() && pl.w.local(home) {
+		pkgs = append(pkgs, home)
+	}
+	var hints []string
+	for _, pkg := range pkgs {
+		ps, _ := pl.candidates(pkg, other, pkg == pl.own)
+		for _, p := range ps {
+			hints = append(hints, fmt.Sprintf("%s returns %s, not %s", pl.nameOf(p), pl.typeString(other), pl.typeString(t)))
+		}
+	}
+	return hints
 }
 
 // ambiguous reports that more than one provider of t is in reach.

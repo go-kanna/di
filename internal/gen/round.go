@@ -37,21 +37,15 @@ type wait struct {
 // one is a provider from the start, so that whether it makes a type ambiguous
 // does not depend on the order the containers are planned in; but what it
 // takes is known only once it is planned. A container needing it waits for the
-// next round, and rounds go on until one plans nothing more. A constructor an
-// earlier run generated for a container of this run is passed over, as it is
-// about to be replaced.
+// next round, and rounds go on until one plans nothing more. What an earlier
+// run generated is passed over, as w.output says.
 func plans(w *world, cs []container) ([]plan, []diag.Diag) {
 	w.ours = make([]*ourCtor, len(cs))
-	w.stale = make(map[string]bool)
 	for i, c := range cs {
 		pkg := c.Named.Obj().Pkg()
 		results := types.NewTuple(types.NewVar(token.NoPos, pkg, "", c.returns))
 		fn := types.NewFunc(token.NoPos, pkg, c.ctor, types.NewSignatureType(nil, nil, nil, nil, results, false))
 		w.ours[i] = &ourCtor{c: c, p: provider{fn: fn, result: c.returns, pos: c.Pos, test: c.test}}
-		w.stale[fn.FullName()] = true
-		if c.must != "" {
-			w.stale[pkg.Path()+"."+c.must] = true
-		}
 	}
 
 	type state struct {

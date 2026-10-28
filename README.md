@@ -149,9 +149,9 @@ any other named type — or a pointer to one:
 
 A variadic parameter is left empty. A provider is called once per constructor, and everything that needs its result
 shares it. A `string` or a `[]byte` is never looked up, so that a function returning one for its own reasons is not
-taken for a provider; give such a value a type of its own, such as `type DSN string`, or take it with `di:"arg"`. A must
-variant beside the function it wraps, `MustNewDeps` beside `NewDeps`, is passed over for that function, so that the
-error reaches the constructor instead of a panic.
+taken for a provider; give such a value a type of its own, such as `type DSN string`, or take it with
+`di:"arg=<name>"`. A must variant beside the function it wraps, `MustNewDeps` beside `NewDeps`, is passed over for that
+function, so that the error reaches the constructor instead of a panic.
 
 For each type it needs, kanna-di takes the first of these that has one:
 
@@ -215,6 +215,9 @@ named field, `with=` also stores the value; on `_`, it only chooses, and a struc
 | `di:"arg"`        | take it as a parameter, named after its type, and store it        | take it as a parameter only            |
 | `di:"arg=<name>"` | the same, with the parameter's name spelled out                   | the same, with the parameter's name    |
 | `di:"-"`          | leave the field alone                                             | error                                  |
+
+A parameter keeps its name, and an import the generated file needs under that name is renamed instead; a name spelled
+out that the package declares at the top level, or that Go does, is an error.
 
 What the container takes or chooses but nothing needs draws a warning:
 
@@ -346,7 +349,8 @@ func TestRegisterUser(t *testing.T) {
 ```
 
 The test calls `newTestServer` before the first run has written it. kanna-di sets that error aside — any call to a
-constructor it is about to generate, in any package — and reports everything else.
+constructor it is about to generate, in any package, whether the constructor is missing still or about to take or
+return something else — and reports everything else.
 
 The functions of a test container's package include those of its `_test.go` files. A provider declared in a `_test.go`
 file is compiled into that package's tests and nowhere else, so it serves the containers of that package's tests,

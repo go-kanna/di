@@ -1,8 +1,10 @@
 // Package shapes holds containers whose generated constructors show the shapes
 // the generator writes: a field of an embedded struct or of a blank one, a
-// container built in place, and variables kept clear of the names the package
-// declares.
+// container built in place, variables kept clear of the names the package
+// declares, and a parameter named as the package its type comes from.
 package shapes
+
+import "github.com/go-kanna/di/internal/gen/testdata/emit/shapes/config"
 
 //go:generate go tool kanna-di
 
@@ -68,5 +70,13 @@ func newDeps() *Deps { return &Deps{DB: newDB()} }
 //
 //kanna:container
 type empty struct{}
+
+// configured takes a config.Config, whose parameter is named config after
+// its type: the import gives way to it.
+//
+//kanna:container
+type configured struct {
+	cfg config.Config `di:"arg"`
+}
 
 var _ = users

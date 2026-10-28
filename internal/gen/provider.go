@@ -130,6 +130,18 @@ func (x *index) providerOf(fn *types.Func) (provider, bool) {
 	return p, true
 }
 
+// serves reports whether p can be called from a container of pkg, which test
+// says is one of pkg's tests. A function declared in a _test.go file is
+// compiled into its package's tests and nowhere else, so it serves the test
+// containers of that package, in-package or external, and no other.
+func (p provider) serves(pkg *types.Package, test bool) bool {
+	if !p.test {
+		return true
+	}
+	path := p.fn.Pkg().Path()
+	return test && (pkg.Path() == path || pkg.Path() == path+"_test")
+}
+
 // providable reports whether a provider can be looked up by t: a type declared
 // in a package, or a pointer to one. A string, or a []byte, would match any
 // function returning one, which a container's package may well hold for other

@@ -558,6 +558,40 @@ type testServer struct {
 	}
 }
 
+func TestPlans_TheWithsOfTwoContainersBuiltInPlaceAreReportedOnce(t *testing.T) {
+	t.Parallel()
+
+	// Neither with= names a provider, so both does not have two to choose
+	// from; each is reported by the container that wrote it.
+	_, diags := plans(t, map[string]string{"x.go": embedTypes + `
+func newUsers(repo Repo) *Users { return nil }
+
+//kanna:container
+type a struct {
+	_ Repo ` + "`di:\"with=nope\"`" + `
+
+	users *Users
+}
+
+//kanna:container
+type b struct {
+	_ Repo ` + "`di:\"with=nope\"`" + `
+
+	users *Users
+}
+
+//kanna:container
+type both struct {
+	*a
+	*b
+}
+`})
+	if len(diags) != 2 || !strings.Contains(diags[0], "package test has no function nope") ||
+		!strings.Contains(diags[1], "package test has no function nope") {
+		t.Errorf("diagnostics = %q, want the with= of a and the with= of b alone", diags)
+	}
+}
+
 func TestPlans_AContainerOfAnotherPackage(t *testing.T) {
 	t.Parallel()
 
