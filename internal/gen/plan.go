@@ -207,7 +207,7 @@ func (pl *planner) choose(f field) {
 	p, err := pl.w.x.resolve(f.ref, f.Type, pl.own, refs)
 	if err != nil {
 		d := fieldDiag(f.Field, err)
-		if e, ok := errors.AsType[*refError](err); ok && e.hint != "" {
+		if e, ok := errors.AsType[refError](err); ok && e.hint != "" {
 			d = d.WithHints(e.hint)
 		}
 		pl.diags = append(pl.diags, d)

@@ -149,7 +149,7 @@ func Resolve(pkg *packages.Package, expr, written string, others ...*packages.Pa
 		pkgs = append(pkgs, o.Types)
 	}
 	p, err := newIndex(pkg.Fset).resolve(r, t, pkg.Types, pkgs)
-	if e, ok := errors.AsType[*refError](err); ok && e.hint != "" {
+	if e, ok := errors.AsType[refError](err); ok && e.hint != "" {
 		return "", fmt.Errorf("%s; %s", e.msg, e.hint)
 	} else if err != nil {
 		return "", err

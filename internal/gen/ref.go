@@ -16,7 +16,7 @@ type refError struct {
 	msg, hint string
 }
 
-func (e *refError) Error() string {
+func (e refError) Error() string {
 	return e.msg
 }
 
@@ -47,7 +47,7 @@ func (x *index) resolve(r ref, want types.Type, own *types.Package, pkgs []*type
 
 	obj := pkg.Scope().Lookup(r.fn)
 	if obj == nil {
-		e := &refError{msg: fmt.Sprintf("package %s has no function %s", pkg.Name(), r.fn)}
+		e := refError{msg: fmt.Sprintf("package %s has no function %s", pkg.Name(), r.fn)}
 		if s, ok := suggest.Closest(r.fn, funcNames(pkg, pkg == own)); ok {
 			e.hint = fmt.Sprintf("did you mean %s?", s)
 		}
@@ -56,32 +56,32 @@ func (x *index) resolve(r ref, want types.Type, own *types.Package, pkgs []*type
 	fn, ok := obj.(*types.Func)
 	switch {
 	case !ok:
-		return provider{}, &refError{msg: name + " is not a function"}
+		return provider{}, refError{msg: name + " is not a function"}
 	case pkg != own && !fn.Exported():
-		return provider{}, &refError{msg: name + " is not exported"}
+		return provider{}, refError{msg: name + " is not exported"}
 	case fn.Signature().TypeParams().Len() > 0:
-		return provider{}, &refError{msg: name +
+		return provider{}, refError{msg: name +
 			" cannot be a provider: it is generic, and nothing would choose its type arguments"}
 	}
 
 	p, ok := x.providerOf(fn)
 	switch {
 	case !ok:
-		return provider{}, &refError{msg: name +
+		return provider{}, refError{msg: name +
 			" cannot be a provider: its first result must be a type declared in a package, or a pointer to one"}
 	case p.bad != "":
-		return provider{}, &refError{msg: name + " cannot be a provider: " + p.bad}
+		return provider{}, refError{msg: name + " cannot be a provider: " + p.bad}
 	}
 
 	if typeKey(p.result) != typeKey(want) && !types.AssignableTo(p.result, want) {
 		got, wanted := typeString(p.result, own), typeString(want, own)
 		if iface, ok := want.Underlying().(*types.Interface); ok {
 			if m, _ := types.MissingMethod(p.result, iface, true); m != nil {
-				return provider{}, &refError{msg: fmt.Sprintf("%s returns %s, which does not implement %s (missing method %s)",
+				return provider{}, refError{msg: fmt.Sprintf("%s returns %s, which does not implement %s (missing method %s)",
 					name, got, wanted, m.Name())}
 			}
 		}
-		return provider{}, &refError{msg: fmt.Sprintf("%s returns %s, not %s", name, got, wanted)}
+		return provider{}, refError{msg: fmt.Sprintf("%s returns %s, not %s", name, got, wanted)}
 	}
 	return p, nil
 }
@@ -107,7 +107,7 @@ func pick(qualifier string, want types.Type, pkgs []*types.Package) (*types.Pack
 	case 1:
 		return matched[0], nil
 	case 0:
-		e := &refError{msg: fmt.Sprintf("no package %s; with= looks in your module and in the package declaring %s",
+		e := refError{msg: fmt.Sprintf("no package %s; with= looks in your module and in the package declaring %s",
 			qualifier, typeString(want, nil))}
 		if s, ok := suggest.Closest(qualifier, names); ok {
 			e.hint = fmt.Sprintf("did you mean %s?", s)
@@ -119,7 +119,7 @@ func pick(qualifier string, want types.Type, pkgs []*types.Package) (*types.Pack
 			paths[i] = m.Path()
 		}
 		slices.Sort(paths)
-		return nil, &refError{
+		return nil, refError{
 			msg:  fmt.Sprintf("%s could be any of %s", qualifier, strings.Join(paths, ", ")),
 			hint: "write as much of the import path as it takes to tell them apart",
 		}
