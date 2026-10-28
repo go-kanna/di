@@ -448,6 +448,49 @@ func (*Fake) Find(string) error { return nil }
 	}
 }
 
+func TestCommand_RefusesAWithThatWouldImportACycle(t *testing.T) {
+	t.Parallel()
+
+	// fake imports app, so app cannot import fake in turn.
+	dir := writeModule(t, with(shop, map[string]string{
+		"app/server.go": `package app
+
+import (
+	"example.com/shop/usecase"
+	"example.com/shop/user"
+)
+
+// Version is what fake imports app for.
+const Version = "dev"
+
+//kanna:container
+type server struct {
+	_ user.Repository ` + "`di:\"with=fake.NewRepository\"`" + `
+
+	getUser *usecase.GetUser
+}
+`,
+		"fake/fake.go": `package fake
+
+import "example.com/shop/app"
+
+var _ = app.Version
+
+type Repository struct{}
+
+func NewRepository() *Repository { return &Repository{} }
+
+func (*Repository) Find(string) error { return nil }
+`,
+	}))
+	code, _, stderr := execute(t, filepath.Join(dir, "app"))
+	want := "./server.go:13:2: error: calling fake.NewRepository would import fake, which imports app: " +
+		"an import cycle (field _)\n"
+	if code != cli.ExitFailure || !strings.Contains(stderr, want) {
+		t.Errorf("exit %d, stderr %q; want %d and %q", code, stderr, cli.ExitFailure, want)
+	}
+}
+
 // with returns the files of base and more together.
 func with(base, more map[string]string) map[string]string {
 	files := maps.Clone(base)

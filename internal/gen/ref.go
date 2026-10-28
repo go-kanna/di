@@ -87,6 +87,10 @@ func (x *index) resolve(
 		}
 		return provider{}, refError{msg: fmt.Sprintf("%s returns %s, not %s", name, got, wanted)}
 	}
+	if pkg != own && imports(pkg, own.Path()) {
+		return provider{}, refError{msg: fmt.Sprintf("calling %s would import %s, which imports %s: an import cycle",
+			name, pkg.Name(), own.Name())}
+	}
 	return p, nil
 }
 
@@ -128,6 +132,24 @@ func pick(qualifier string, want types.Type, pkgs []*types.Package) (*types.Pack
 			hint: "write as much of the import path as it takes to tell them apart",
 		}
 	}
+}
+
+// imports reports whether pkg imports the package at path, directly or through
+// what it imports.
+func imports(pkg *types.Package, path string) bool {
+	seen := make(map[*types.Package]bool)
+	var walk func(p *types.Package) bool
+	walk = func(p *types.Package) bool {
+		if p.Path() == path {
+			return true
+		}
+		if seen[p] {
+			return false
+		}
+		seen[p] = true
+		return slices.ContainsFunc(p.Imports(), walk)
+	}
+	return slices.ContainsFunc(pkg.Imports(), walk)
 }
 
 // qualifies reports whether qualifier, as written before the function of a
