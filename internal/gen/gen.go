@@ -227,7 +227,9 @@ func files(roots []*packages.Package, planned []plan) ([]output.Change, []diag.D
 // withoutPendingCalls returns the diagnostics of loading set but those of a
 // call to a constructor the run is about to generate. A test calling its
 // container's constructor, for one, is in the package the container is, and
-// cannot compile before the constructor exists.
+// cannot compile before the constructor exists; nor can a caller that passes
+// and takes what the constructor is about to, while the output of the last
+// run still declares it as it was.
 func withoutPendingCalls(set packages.Set, cs []container) []diag.Diag {
 	pending := make(map[string]bool, 2*len(cs))
 	for _, c := range cs {
@@ -244,10 +246,32 @@ func withoutPendingCalls(set packages.Set, cs []container) []diag.Diag {
 		}
 	}
 	return slices.DeleteFunc(slices.Clone(set.Diags), func(d diag.Diag) bool {
-		expr, ok := strings.CutPrefix(d.Message, "undefined: ")
+		expr, ok := called(d.Message)
 		pkg := byFile[d.Pos.Filename]
 		return ok && pkg != nil && pending[referenced(pkg, d.Pos.Filename, expr)]
 	})
+}
+
+// called returns the function a load error is about when it is one a
+// constructor's signature settles: the function is undefined, or called with
+// the wrong number of arguments, or assigned to the wrong number of variables.
+// The message's first line names it; the have/want lines below say no more.
+func called(msg string) (string, bool) {
+	first, _, _ := strings.Cut(msg, "\n")
+	for _, prefix := range []string{"undefined: ", "too many arguments in call to ", "not enough arguments in call to "} {
+		if expr, ok := strings.CutPrefix(first, prefix); ok {
+			return expr, true
+		}
+	}
+	// "assignment mismatch: 2 variables but newServer returns 1 value"
+	if rest, ok := strings.CutPrefix(first, "assignment mismatch: "); ok {
+		if _, call, ok := strings.Cut(rest, " but "); ok {
+			if expr, _, ok := strings.Cut(call, " returns "); ok {
+				return expr, true
+			}
+		}
+	}
+	return "", false
 }
 
 // referenced returns the full name, "<import path>.<name>", of what expr refers

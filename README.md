@@ -315,7 +315,8 @@ func TestRegisterUser(t *testing.T) {
 ```
 
 The test calls `newTestServer` before the first run has written it. kanna-di sets that error aside — any call to a
-constructor it is about to generate, in any package — and reports everything else.
+constructor it is about to generate, in any package, whether the constructor is missing still or about to take or
+return something else — and reports everything else.
 
 The functions of a test container's package include those of its `_test.go` files. A provider declared in a `_test.go`
 file is compiled into that package's tests and nowhere else, so it serves the containers of that package's tests,
