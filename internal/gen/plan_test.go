@@ -230,6 +230,12 @@ func TestPlans_Diagnostics(t *testing.T) {
 			want:  "x.go:13:2: warning: nothing in c needs *Deps or any of its fields, so its with= chooses nothing",
 		},
 		{
+			name:  "a struct found that nothing draws on",
+			decls: "type Deps struct{ DB *DB }\nfunc newDeps() Deps { return Deps{} }",
+			body:  "_ Deps",
+			want:  "x.go:13:2: warning: nothing in c needs Deps or any of its fields\n",
+		},
+		{
 			name:  "a with= nothing needs",
 			decls: "func newRepo() impl { return impl{} }",
 			body:  "_ Repo `di:\"with=newRepo\"`",

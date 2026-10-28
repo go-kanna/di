@@ -89,6 +89,34 @@ type App struct {
 			}},
 		},
 		{
+			// Without a tag, the struct is resolved as any field is.
+			name: "a blank struct found without a tag",
+			src: `
+type Deps struct {
+	DB    *DB
+	Cache *Cache
+}
+
+func newDeps() *Deps                    { return nil }
+func newUsers(db *DB, c *Cache) *Users { return nil }
+
+//kanna:container
+type App struct {
+	_ *Deps
+
+	Users *Users
+}
+`,
+			plans: map[string][]string{"App": {
+				"NewApp() *App",
+				"deps := newDeps()",
+				"db := deps.DB",
+				"cache := deps.Cache",
+				"users := newUsers(db, cache)",
+				"App{Users: users}",
+			}},
+		},
+		{
 			name: "a blank struct taken as an argument",
 			src: `
 type Deps struct {
@@ -495,6 +523,22 @@ type App struct {
 }
 `,
 			want: "x.go:21:2: error: nothing provides *DB, which newDeps needs\n  via App._ *Deps → newDeps\n",
+		},
+		{
+			name: "a blank struct nothing provides",
+			src: `
+type Deps struct{ DB *DB }
+
+func newUsers(db *DB) *Users { return nil }
+
+//kanna:container
+type App struct {
+	_ Deps
+
+	Users *Users
+}
+`,
+			want: "x.go:21:2: error: nothing provides Deps\n",
 		},
 		{
 			name: "an embedded struct nothing provides",
