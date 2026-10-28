@@ -188,7 +188,8 @@ func (pl *planner) chooseInner(f field, inner container) {
 
 // fromEmbedded finds t in what the container embeds: a field of a struct it
 // embeds, or the with= of a container it builds in place. It reports false
-// when none has one, so that the search goes on.
+// when none has one, so that the search goes on. A with= that names nothing
+// chooses nothing here, and is reported by the plan of its own container.
 func (pl *planner) fromEmbedded(t types.Type, k string, via []string) (int, bool) {
 	type candidate struct {
 		desc string
@@ -205,10 +206,15 @@ func (pl *planner) fromEmbedded(t types.Type, k string, via []string) (int, bool
 			cands = append(cands, candidate{desc: e.via + "." + strings.Join(pr.path, "."), e: e, pr: pr})
 		}
 	}
+	named := false
 	for _, ch := range pl.innerChosen[k] {
+		if ch.p == nil {
+			named = true
+			continue
+		}
 		// Two containers built in place may choose the same provider.
 		if !slices.ContainsFunc(cands, func(c candidate) bool {
-			return c.p != nil && ch.p != nil && c.p.fn.FullName() == ch.p.fn.FullName()
+			return c.p != nil && c.p.fn.FullName() == ch.p.fn.FullName()
 		}) {
 			cands = append(cands, candidate{desc: ch.via, p: ch.p})
 		}
@@ -216,13 +222,10 @@ func (pl *planner) fromEmbedded(t types.Type, k string, via []string) (int, bool
 
 	switch len(cands) {
 	case 0:
-		return -1, false
+		return -1, named
 	case 1:
 		c := cands[0]
 		if c.e == nil {
-			if c.p == nil {
-				return -1, true
-			}
 			return pl.call(*c.p, via), true
 		}
 		of := pl.embedStep(c.e)
