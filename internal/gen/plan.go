@@ -271,7 +271,7 @@ func (pl *planner) find(t types.Type, k string, via []string) int {
 
 	switch len(ps) {
 	case 0:
-		pl.missing(t, via, near)
+		pl.missing(t, via, append(near, pl.nearly(t)...))
 		return -1
 	case 1:
 		return pl.call(ps[0], via)
@@ -375,6 +375,33 @@ func (pl *planner) missing(t types.Type, via []string, near []string) {
 	pl.diags = append(pl.diags, d.WithHints(fmt.Sprintf(
 		`return one from a function in package %s, take it with di:"arg", or choose a provider with di:"with=..."`,
 		pl.own.Name())))
+}
+
+// nearly lists, for a hint, the providers in reach of *t for a t, or of t for
+// a *t: a pointer-or-value mismatch is the likely reason nothing provides t.
+func (pl *planner) nearly(t types.Type) []string {
+	var other types.Type
+	if p, ok := types.Unalias(t).(*types.Pointer); ok {
+		other = p.Elem()
+	} else {
+		other = types.NewPointer(t)
+	}
+	if !providable(other) {
+		return nil
+	}
+
+	pkgs := []*types.Package{pl.own}
+	if home := homeOf(t); home != nil && home.Path() != pl.own.Path() && pl.w.local(home) {
+		pkgs = append(pkgs, home)
+	}
+	var hints []string
+	for _, pkg := range pkgs {
+		ps, _ := pl.candidates(pkg, other, pkg == pl.own)
+		for _, p := range ps {
+			hints = append(hints, fmt.Sprintf("%s returns %s, not %s", pl.nameOf(p), pl.typeString(other), pl.typeString(t)))
+		}
+	}
+	return hints
 }
 
 // ambiguous reports that more than one provider of t is in reach.

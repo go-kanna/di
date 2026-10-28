@@ -161,6 +161,18 @@ func TestPlans_Diagnostics(t *testing.T) {
 				"a cleanup must be a func(), with neither parameters nor results\n",
 		},
 		{
+			name:  "a provider of the pointer",
+			decls: "func newDB() *DB { return nil }",
+			body:  "db DB",
+			want:  "x.go:13:2: error: nothing provides DB\n  newDB returns *DB, not DB\n" + hint,
+		},
+		{
+			name:  "a provider of the value",
+			decls: "func newDB() DB { return DB{} }",
+			body:  "db *DB",
+			want:  "x.go:13:2: error: nothing provides *DB\n  newDB returns DB, not *DB\n" + hint,
+		},
+		{
 			name: "a provider only tests compile",
 			body: "users *Users",
 			test: "func fakeUsers() *Users { return nil }",
