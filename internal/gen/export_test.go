@@ -209,7 +209,7 @@ func planAll(fset *token.FileSet, pkgs []*packages.Package, module string) ([]pl
 	for _, c := range cs {
 		w.containers[typeKey(c.Named)] = c
 	}
-	planned, _, pds := plans(w, cs)
+	planned, pds := plans(w, cs)
 	return planned, append(ds, pds...)
 }
 

@@ -7,7 +7,6 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/go-kanna/internal/cli"
@@ -140,7 +139,7 @@ func generate(
 	if diag.HasErrors(diags) {
 		// What is wrong with a container may well be one of the type errors,
 		// but for those of a call to its constructor.
-		return nil, append(slices.DeleteFunc(deferred, pendingCall(set, cs)), diags...)
+		return nil, packages.Stopped(deferred, diags, set.Pending(constructors(cs)))
 	}
 
 	w := &world{
@@ -159,9 +158,9 @@ func generate(
 		w.containers[typeKey(c.Named)] = c
 	}
 
-	planned, invalid, ds := plans(w, cs)
-	if diags = append(diags, ds...); invalid || diag.HasErrors(diags) {
-		return nil, append(slices.DeleteFunc(deferred, pendingCall(set, cs)), diags...)
+	planned, ds := plans(w, cs)
+	if diags = append(diags, ds...); diag.HasErrors(diags) {
+		return nil, packages.Stopped(deferred, diags, set.Pending(constructors(cs)))
 	}
 	changes, ds := files(roots, planned)
 	if diags = append(diags, ds...); diag.HasErrors(diags) {
@@ -271,83 +270,17 @@ func files(roots []*packages.Package, planned []plan) ([]output.Change, []diag.D
 	return changes, diags
 }
 
-// pendingCall returns whether an error loading set is about a call to a
-// constructor of cs, which the run is about to generate: one that does not
-// exist yet, or that the output of the last run still declares as it was.
-// Such an error says nothing of what keeps the run from writing it.
-func pendingCall(set packages.Set, cs []container) func(diag.Diag) bool {
-	pending := make(map[string]bool, 2*len(cs))
+// constructors returns the full names of the constructors of cs, which the
+// run writes.
+func constructors(cs []container) map[string]bool {
+	names := make(map[string]bool, 2*len(cs))
 	for _, c := range cs {
-		pending[c.PkgPath+"."+c.ctor] = true
+		names[c.PkgPath+"."+c.ctor] = true
 		if c.must != "" {
-			pending[c.PkgPath+"."+c.must] = true
+			names[c.PkgPath+"."+c.must] = true
 		}
 	}
-
-	byFile := make(map[string]*packages.Package)
-	for _, pkg := range set.Packages {
-		for _, f := range pkg.CompiledGoFiles {
-			byFile[f] = pkg
-		}
-	}
-	return func(d diag.Diag) bool {
-		expr, ok := called(d.Message)
-		pkg := byFile[d.Pos.Filename]
-		return ok && pkg != nil && pending[referenced(pkg, d.Pos.Filename, expr)]
-	}
-}
-
-// called returns the function a load error is about when it is one a
-// constructor's signature settles: the function is undefined, or called with
-// the wrong number of arguments, or assigned to the wrong number of variables.
-// The message's first line names it; the have/want lines below say no more.
-func called(msg string) (string, bool) {
-	first, _, _ := strings.Cut(msg, "\n")
-	for _, prefix := range []string{"undefined: ", "too many arguments in call to ", "not enough arguments in call to "} {
-		if expr, ok := strings.CutPrefix(first, prefix); ok {
-			return expr, true
-		}
-	}
-	// "assignment mismatch: 2 variables but newServer returns 1 value"
-	if rest, ok := strings.CutPrefix(first, "assignment mismatch: "); ok {
-		if _, call, ok := strings.Cut(rest, " but "); ok {
-			if expr, _, ok := strings.Cut(call, " returns "); ok {
-				return expr, true
-			}
-		}
-	}
-	return "", false
-}
-
-// referenced returns the full name, "<import path>.<name>", of what expr refers
-// to in the file filename of pkg: a name of pkg itself, or, qualified, one of
-// the package the file imports under the qualifier.
-func referenced(pkg *packages.Package, filename, expr string) string {
-	qualifier, name, qualified := strings.Cut(expr, ".")
-	if !qualified {
-		return pkg.PkgPath + "." + expr
-	}
-	for _, file := range pkg.Syntax {
-		if pkg.Fset.Position(file.Pos()).Filename != filename {
-			continue
-		}
-		for _, spec := range file.Imports {
-			path, err := strconv.Unquote(spec.Path.Value)
-			if err != nil {
-				continue
-			}
-			local := ""
-			if spec.Name != nil {
-				local = spec.Name.Name
-			} else if imp := imported(pkg.Types, path); imp != nil {
-				local = imp.Name()
-			}
-			if local == qualifier {
-				return path + "." + name
-			}
-		}
-	}
-	return ""
+	return names
 }
 
 // unloaded returns the packages of the module that a with= of the containers
@@ -408,17 +341,4 @@ func reachable(pkgs []*packages.Package) []*types.Package {
 		}
 	}
 	return out
-}
-
-// imported returns the package pkg imports from path, or nil.
-func imported(pkg *types.Package, path string) *types.Package {
-	if pkg == nil {
-		return nil
-	}
-	for _, imp := range pkg.Imports() {
-		if imp.Path() == path {
-			return imp
-		}
-	}
-	return nil
 }
