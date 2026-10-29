@@ -379,8 +379,9 @@ kanna-di [flags] [packages]
 The packages say where the containers are, not where providers come from, and default to the one in the current
 directory, so `//go:generate go tool kanna-di` needs no argument. A run that succeeds prints nothing. A package whose
 structs have all lost `//kanna:container` has its `di_gen.go` and `di_gen_test.go` removed, unless code in the packages
-the run loads still calls their constructors; a file of either name without the generated-code header is never
-touched.
+the run loads still calls their constructors; a file of either name without the generated-code header is never touched.
+The `go generate` that removes one ends with `open ...: no such file or directory`, from go generate itself, which lists
+a package's files before it runs the generators; the file is gone as it should be.
 
 ## Example
 
