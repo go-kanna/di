@@ -120,18 +120,27 @@ func generate(
 		}
 	}
 
+	// A package loaded for what a with= names comes with its tests, which a
+	// run loads no more once the output imports the package. So no error of
+	// them counts on the first run either.
+	others := testsOutside(set, targets)
+	set.Diags = slices.DeleteFunc(slices.Clone(set.Diags), others)
+
+	// Code calling a constructor does not compile before the run writes it,
+	// nor does code calling it as the run is about to change it. So a type
+	// error of a package loaded for the containers does not stop the run here:
+	// packages.Recheck tells, once the output is in place, whether it remains.
+	blocking, deferred := set.Split()
+	if diag.HasErrors(blocking) {
+		return nil, append(blocking, set.SetAsideWarnings()...)
+	}
+
 	written := outputOf(roots)
 	cs, diags := containers(set.Fset, scan.Structs(roots), dir, written)
-	loadDiags := withoutPendingCalls(set, cs)
-	if diag.HasErrors(loadDiags) {
-		for _, path := range set.SetAside {
-			loadDiags = append(loadDiags, diag.Warningf(token.Position{Filename: path},
-				"set aside because it no longer compiles; it is regenerated once the errors above are fixed"))
-		}
-		return nil, loadDiags
-	}
-	if diags = append(loadDiags, diags...); diag.HasErrors(diags) {
-		return nil, diags
+	if diag.HasErrors(diags) {
+		// What is wrong with a container may well be one of the type errors,
+		// but for those of a call to its constructor.
+		return nil, append(slices.DeleteFunc(deferred, pendingCall(set, cs)), diags...)
 	}
 
 	w := &world{
@@ -150,12 +159,36 @@ func generate(
 		w.containers[typeKey(c.Named)] = c
 	}
 
-	planned, ds := plans(w, cs)
+	planned, invalid, ds := plans(w, cs)
+	if diags = append(diags, ds...); invalid || diag.HasErrors(diags) {
+		return nil, append(slices.DeleteFunc(deferred, pendingCall(set, cs)), diags...)
+	}
+	changes, ds := files(roots, planned)
 	if diags = append(diags, ds...); diag.HasErrors(diags) {
 		return nil, diags
 	}
-	changes, ds := files(roots, planned)
-	return changes, append(diags, ds...)
+	if rds := slices.DeleteFunc(packages.Recheck(set, changes), others); len(rds) > 0 {
+		return nil, slices.Concat(diags, rds, set.SetAsideWarnings())
+	}
+	return changes, diags
+}
+
+// testsOutside returns whether a diagnostic is about a test file of a package
+// of set that targets does not name: one loaded for what a with= names, or
+// the external test package of one.
+func testsOutside(set packages.Set, targets map[string]bool) func(diag.Diag) bool {
+	files := make(map[string]bool)
+	for _, p := range set.Packages {
+		if targets[p.PkgPath] {
+			continue
+		}
+		for _, f := range p.CompiledGoFiles {
+			if strings.HasSuffix(f, "_test.go") {
+				files[f] = true
+			}
+		}
+	}
+	return func(d diag.Diag) bool { return files[d.Pos.Filename] }
 }
 
 // outputOf returns the files of roots that an earlier run wrote, by absolute
@@ -238,13 +271,11 @@ func files(roots []*packages.Package, planned []plan) ([]output.Change, []diag.D
 	return changes, diags
 }
 
-// withoutPendingCalls returns the diagnostics of loading set but those of a
-// call to a constructor the run is about to generate. A test calling its
-// container's constructor, for one, is in the package the container is, and
-// cannot compile before the constructor exists; nor can a caller that passes
-// and takes what the constructor is about to, while the output of the last
-// run still declares it as it was.
-func withoutPendingCalls(set packages.Set, cs []container) []diag.Diag {
+// pendingCall returns whether an error loading set is about a call to a
+// constructor of cs, which the run is about to generate: one that does not
+// exist yet, or that the output of the last run still declares as it was.
+// Such an error says nothing of what keeps the run from writing it.
+func pendingCall(set packages.Set, cs []container) func(diag.Diag) bool {
 	pending := make(map[string]bool, 2*len(cs))
 	for _, c := range cs {
 		pending[c.PkgPath+"."+c.ctor] = true
@@ -259,11 +290,11 @@ func withoutPendingCalls(set packages.Set, cs []container) []diag.Diag {
 			byFile[f] = pkg
 		}
 	}
-	return slices.DeleteFunc(slices.Clone(set.Diags), func(d diag.Diag) bool {
+	return func(d diag.Diag) bool {
 		expr, ok := called(d.Message)
 		pkg := byFile[d.Pos.Filename]
 		return ok && pkg != nil && pending[referenced(pkg, d.Pos.Filename, expr)]
-	})
+	}
 }
 
 // called returns the function a load error is about when it is one a

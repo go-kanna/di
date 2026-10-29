@@ -196,7 +196,7 @@ func TestServer(t *testing.T) {
 	if strings.Contains(readFile(t, filepath.Join(app, "di_gen.go")), "newTestServer") {
 		t.Error("the constructor of the test container went to di_gen.go")
 	}
-	gotest(t, dir, "./app")
+	gotest(t, dir)
 }
 
 func TestCommand_AnExternalTestPackage(t *testing.T) {
@@ -235,7 +235,7 @@ func TestEnv(t *testing.T) { _ = newEnv(fake{}) }
 	if got := readFile(t, filepath.Join(app, "di_gen_test.go")); !strings.Contains(got, "package app_test") {
 		t.Errorf("di_gen_test.go is not of package app_test:\n%s", got)
 	}
-	gotest(t, dir, "./app")
+	gotest(t, dir)
 }
 
 func TestCommand_ToleratesQualifiedCallsToItsConstructors(t *testing.T) {
@@ -270,13 +270,14 @@ import (
 
 func TestServer(t *testing.T) {
 	_ = app.MustNewServer()
-	_, _ = other.NewServer()
+	_ = other.NewServer()
 }
 `,
 	}))
 	if code, _, stderr := execute(t, filepath.Join(dir, "app")); code != cli.ExitOK {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
+	gotest(t, dir)
 }
 
 func TestCommand_TestContainersInBothTestPackages(t *testing.T) {
@@ -447,7 +448,7 @@ func TestEnv(t *testing.T) { _ = newEnv() }
 	if got := readFile(t, filepath.Join(app, "di_gen_test.go")); !strings.Contains(got, "repo := app.NewFake()") {
 		t.Errorf("di_gen_test.go does not call app.NewFake:\n%s", got)
 	}
-	gotest(t, dir, "./app")
+	gotest(t, dir)
 }
 
 func TestCommand_RefusesAWithNamingWhatOnlyTestsCompile(t *testing.T) {
@@ -695,10 +696,11 @@ func build(t *testing.T, dir string) {
 	gocmd(t, dir, "build", "./...")
 }
 
-// gotest runs the tests of pkg in the module in dir.
-func gotest(t *testing.T, dir, pkg string) {
+// gotest runs the tests of package app, where the containers are, in the
+// module in dir.
+func gotest(t *testing.T, dir string) {
 	t.Helper()
-	gocmd(t, dir, "test", pkg)
+	gocmd(t, dir, "test", "./app")
 }
 
 func gocmd(t *testing.T, dir string, args ...string) {
