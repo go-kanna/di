@@ -39,10 +39,7 @@ type wait struct {
 // takes is known only once it is planned. A container needing it waits for the
 // next round, and rounds go on until one plans nothing more. What an earlier
 // run generated is passed over, as w.output says.
-//
-// invalid reports that a container needs a type that does not type-check,
-// which no diagnostic of the plans says more of than the type error does.
-func plans(w *world, cs []container) (planned []plan, invalid bool, diags []diag.Diag) {
+func plans(w *world, cs []container) ([]plan, []diag.Diag) {
 	w.ours = make([]*ourCtor, len(cs))
 	for i, c := range cs {
 		pkg := c.Named.Obj().Pkg()
@@ -65,7 +62,7 @@ func plans(w *world, cs []container) (planned []plan, invalid bool, diags []diag
 				continue
 			}
 			p, ds, ws := planOf(w, c)
-			states[i] = state{p: p, diags: ds, waits: ws, failed: diag.HasErrors(ds) || p.invalid}
+			states[i] = state{p: p, diags: ds, waits: ws, failed: diag.HasErrors(ds)}
 			if !states[i].failed && len(ws) == 0 {
 				w.offer(w.ours[i], p)
 				progress = true
@@ -73,8 +70,11 @@ func plans(w *world, cs []container) (planned []plan, invalid bool, diags []diag
 		}
 	}
 
+	var (
+		planned []plan
+		diags   []diag.Diag
+	)
 	for i, s := range states {
-		invalid = invalid || s.p.invalid
 		diags = append(diags, s.diags...)
 		switch {
 		case w.ours[i].planned:
@@ -86,7 +86,7 @@ func plans(w *world, cs []container) (planned []plan, invalid bool, diags []diag
 			}
 		}
 	}
-	return planned, invalid, diags
+	return planned, diags
 }
 
 // offer makes g, whose container p plans, a provider taking what p takes.

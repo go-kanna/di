@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-kanna/internal/diag"
+	"github.com/go-kanna/internal/packages"
 	"github.com/go-kanna/internal/scan"
 )
 
@@ -55,10 +56,6 @@ type plan struct {
 
 	// errs and cleanup report that a step returns an error, or a cleanup.
 	errs, cleanup bool
-
-	// invalid reports that a type it needs does not type-check, which keeps
-	// it from being generated; the type error says why.
-	invalid bool
 }
 
 // param is a parameter of the constructor.
@@ -365,8 +362,8 @@ func (pl *planner) add(s step) int {
 // holds no value. The hint names the field: it may be one of a container built
 // in place, reported at the field embedding it.
 func (pl *planner) missing(t types.Type, via []string, near []string) {
-	if invalidType(t) {
-		pl.pl.invalid = true
+	if packages.Invalid(t) {
+		pl.diags = append(pl.diags, packages.NotTypeChecked(pl.root.Pos))
 		return
 	}
 	msg := "nothing provides " + pl.typeString(t)
@@ -388,26 +385,6 @@ func (pl *planner) missing(t types.Type, via []string, near []string) {
 		d = d.WithHints(fmt.Sprintf(`or leave %s at its zero value with di:"-"`, via[0]))
 	}
 	pl.diags = append(pl.diags, d)
-}
-
-// invalidType reports whether t does not type-check, such as *Missing for an
-// undefined Missing.
-func invalidType(t types.Type) bool {
-	switch t := t.(type) {
-	case *types.Basic:
-		return t.Kind() == types.Invalid
-	case *types.Pointer:
-		return invalidType(t.Elem())
-	case *types.Slice:
-		return invalidType(t.Elem())
-	case *types.Array:
-		return invalidType(t.Elem())
-	case *types.Map:
-		return invalidType(t.Key()) || invalidType(t.Elem())
-	case *types.Chan:
-		return invalidType(t.Elem())
-	}
-	return false
 }
 
 // nearly lists, for a hint, the providers in reach of *t for a t, or of t for
