@@ -352,9 +352,11 @@ func TestRegisterUser(t *testing.T) {
 }
 ```
 
-The test calls `newTestServer` before the first run has written it. kanna-di sets that error aside — any call to a
-constructor it is about to generate, in any package, whether the constructor is missing still or about to take or
-return something else — and reports everything else.
+The test calls `newTestServer` before the first run has written it. kanna-di type-checks the packages it loads once
+more with what it is about to write in place, so a call to a constructor that is missing still, or about to take or
+return something else, does not stop it. What is wrong then is reported, and nothing is written: a call the constructor
+as written does not match, or a mistake the missing constructor hid, such as a method that what it returns does not
+have.
 
 The functions of a test container's package include those of its `_test.go` files. A provider declared in a `_test.go`
 file is compiled into that package's tests and nowhere else, so it serves the containers of that package's tests,
@@ -376,8 +378,9 @@ kanna-di [flags] [packages]
 
 The packages say where the containers are, not where providers come from, and default to the one in the current
 directory, so `//go:generate go tool kanna-di` needs no argument. A run that succeeds prints nothing. A package whose
-structs have all lost `//kanna:container` has its `di_gen.go` and `di_gen_test.go` removed; a file of either name
-without the generated-code header is never touched.
+structs have all lost `//kanna:container` has its `di_gen.go` and `di_gen_test.go` removed, unless code in the packages
+the run loads still calls their constructors; a file of either name without the generated-code header is never
+touched.
 
 ## Example
 
