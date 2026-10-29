@@ -120,6 +120,12 @@ func generate(
 		}
 	}
 
+	// A package loaded for what a with= names comes with its tests, which a
+	// run loads no more once the output imports the package. So no error of
+	// them counts on the first run either.
+	others := testsOutside(set, targets)
+	set.Diags = slices.DeleteFunc(slices.Clone(set.Diags), others)
+
 	// Code calling a constructor does not compile before the run writes it,
 	// nor does code calling it as the run is about to change it. So a type
 	// error of a package loaded for the containers does not stop the run here:
@@ -161,10 +167,28 @@ func generate(
 	if diags = append(diags, ds...); diag.HasErrors(diags) {
 		return nil, diags
 	}
-	if rds := packages.Recheck(set, changes); len(rds) > 0 {
+	if rds := slices.DeleteFunc(packages.Recheck(set, changes), others); len(rds) > 0 {
 		return nil, slices.Concat(diags, rds, set.SetAsideWarnings())
 	}
 	return changes, diags
+}
+
+// testsOutside returns whether a diagnostic is about a test file of a package
+// of set that targets does not name: one loaded for what a with= names, or
+// the external test package of one.
+func testsOutside(set packages.Set, targets map[string]bool) func(diag.Diag) bool {
+	files := make(map[string]bool)
+	for _, p := range set.Packages {
+		if targets[p.PkgPath] {
+			continue
+		}
+		for _, f := range p.CompiledGoFiles {
+			if strings.HasSuffix(f, "_test.go") {
+				files[f] = true
+			}
+		}
+	}
+	return func(d diag.Diag) bool { return files[d.Pos.Filename] }
 }
 
 // outputOf returns the files of roots that an earlier run wrote, by absolute

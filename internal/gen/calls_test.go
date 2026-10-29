@@ -335,3 +335,29 @@ func TestCommand_ReportsTheTypeErrorBehindAnInvalidType(t *testing.T) {
 		})
 	}
 }
+
+func TestCommand_IgnoresTheTestsOfAPackageAWithNames(t *testing.T) {
+	t.Parallel()
+
+	// postgres comes with its tests on the first run alone, before di_gen.go
+	// imports it.
+	tests := []struct {
+		name, file, src string
+	}{
+		{"in the package", "postgres/postgres_test.go", "package postgres\n\nvar _ int = \"broken test helper\"\n"},
+		{"in its external test", "postgres/ext_test.go", "package postgres_test\n\nvar _ int = \"broken test helper\"\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := writeModule(t, with(shop, map[string]string{"app/server.go": server, tt.file: tt.src}))
+			app := filepath.Join(dir, "app")
+			for _, args := range [][]string{nil, {"-check"}} {
+				if code, _, stderr := execute(t, app, args...); code != cli.ExitOK || stderr != "" {
+					t.Errorf("%q: exit %d, stderr %q", args, code, stderr)
+				}
+			}
+		})
+	}
+}
