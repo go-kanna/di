@@ -16,3 +16,6 @@ bin/
 
 # temporary files
 tmp/
+
+# what the workspace has resolved, which follows each checkout
+go.work.sum
