@@ -387,8 +387,8 @@ itself, which lists a package's files before it runs the generators; the file is
 
 ## Example
 
-[`example`](example) wires a small shop in the layers above — domain, use cases, infrastructure, handlers — with every
-way of finding a provider: a binding to an interface, an argument, an embedded container, cleanups, a must variant, and
+[`example`](example) wires a small shop in the layers above — domain, use cases, infrastructure, handlers — finding its
+providers through a binding to an interface, an argument, and an embedded container, with cleanups, a must variant, and
 a test container that swaps the repository for one in memory. CI regenerates it and fails if the output would change.
 
 ## Development
