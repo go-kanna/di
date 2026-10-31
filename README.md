@@ -209,13 +209,13 @@ named field, `with=` also stores the value; on `_`, it only chooses, and a struc
 
 `//kanna:container` marks a struct, and every field of it is resolved unless its tag says otherwise:
 
-| Field             | Named                                                             | `_`                                             |
-|-------------------|-------------------------------------------------------------------|-------------------------------------------------|
-| no tag            | resolve the field's type and store the value                      | a struct: resolve it, store nothing; else error |
-| `di:"with=<ref>"` | resolve it with ref, which serves the type in the whole container | choose ref for the type, store nothing          |
-| `di:"arg"`        | take it as a parameter, named after its type, and store it        | take it as a parameter only                     |
-| `di:"arg=<name>"` | the same, with the parameter's name spelled out                   | the same, with the parameter's name             |
-| `di:"-"`          | leave the field alone                                             | error                                           |
+| Field             | Named                                                             | `_`                                                                  |
+|-------------------|-------------------------------------------------------------------|----------------------------------------------------------------------|
+| no tag            | resolve the field's type and store the value                      | a struct with exported fields: resolve it, store nothing; else error |
+| `di:"with=<ref>"` | resolve it with ref, which serves the type in the whole container | choose ref for the type, store nothing                               |
+| `di:"arg"`        | take it as a parameter, named after its type, and store it        | take it as a parameter only                                          |
+| `di:"arg=<name>"` | the same, with the parameter's name spelled out                   | the same, with the parameter's name                                  |
+| `di:"-"`          | leave the field alone                                             | error                                                                |
 
 A named or embedded field without a tag whose type is a struct with no fields, not a pointer to one, is left at its zero
 value, the only value it has: a gRPC server embedding `todov1.UnimplementedTodoServiceServer` needs no provider for it.
