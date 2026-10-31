@@ -209,13 +209,13 @@ named field, `with=` also stores the value; on `_`, it only chooses, and a struc
 
 `//kanna:container` marks a struct, and every field of it is resolved unless its tag says otherwise:
 
-| Field             | Named                                                             | `_`                                             |
-|-------------------|-------------------------------------------------------------------|-------------------------------------------------|
-| no tag            | resolve the field's type and store the value                      | a struct: resolve it, store nothing; else error |
-| `di:"with=<ref>"` | resolve it with ref, which serves the type in the whole container | choose ref for the type, store nothing          |
-| `di:"arg"`        | take it as a parameter, named after its type, and store it        | take it as a parameter only                     |
-| `di:"arg=<name>"` | the same, with the parameter's name spelled out                   | the same, with the parameter's name             |
-| `di:"-"`          | leave the field alone                                             | error                                           |
+| Field             | Named                                                             | `_`                                                                  |
+|-------------------|-------------------------------------------------------------------|----------------------------------------------------------------------|
+| no tag            | resolve the field's type and store the value                      | a struct with exported fields: resolve it, store nothing; else error |
+| `di:"with=<ref>"` | resolve it with ref, which serves the type in the whole container | choose ref for the type, store nothing                               |
+| `di:"arg"`        | take it as a parameter, named after its type, and store it        | take it as a parameter only                                          |
+| `di:"arg=<name>"` | the same, with the parameter's name spelled out                   | the same, with the parameter's name                                  |
+| `di:"-"`          | leave the field alone                                             | error                                                                |
 
 A named or embedded field without a tag whose type is a struct with no fields, not a pointer to one, is left at its zero
 value, the only value it has: a gRPC server embedding `todov1.UnimplementedTodoServiceServer` needs no provider for it.
@@ -378,17 +378,17 @@ kanna-di [flags] [packages]
 | `-version`     | print the version                                                                            |
 
 The packages say where the containers are, not where providers come from, and default to the one in the current
-directory, so `//go:generate go tool kanna-di` needs no argument. A run that succeeds prints nothing. A package whose
-structs have all lost `//kanna:container` has its `di_gen.go` and `di_gen_test.go` removed, unless code in the packages
-the run loads still calls their constructors; a file of either name without the generated-code header is never touched.
-The `go generate` that removes one ends with `open ...: no such file or directory`, from go generate itself, which lists
-a package's files before it runs the generators; the file is gone as it should be
+directory, so `//go:generate go tool kanna-di` needs no argument. A run that succeeds prints nothing but its warnings.
+A package whose structs have all lost `//kanna:container` has its `di_gen.go` and `di_gen_test.go` removed, unless code
+in the packages the run loads still calls their constructors; a file of either name without the generated-code header
+is never touched. The `go generate` that removes one ends with `open ...: no such file or directory`, from go generate
+itself, which lists a package's files before it runs the generators; the file is gone as it should be
 ([golang/go#36068](https://github.com/golang/go/issues/36068)).
 
 ## Example
 
-[`example`](example) wires a small shop in the layers above — domain, use cases, infrastructure, handlers — with every
-way of finding a provider: a binding to an interface, an argument, an embedded container, cleanups, a must variant, and
+[`example`](example) wires a small shop in the layers above — domain, use cases, infrastructure, handlers — finding its
+providers through a binding to an interface, an argument, and an embedded container, with cleanups, a must variant, and
 a test container that swaps the repository for one in memory. CI regenerates it and fails if the output would change.
 
 ## Development
