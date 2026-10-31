@@ -21,8 +21,8 @@ go get -tool github.com/go-kanna/di/cmd/kanna-di
 
 ## Use
 
-Take an application in layers: the domain declares a repository, use cases depend on it, the infrastructure
-implements it, and handlers call the use cases. Each layer keeps its constructors next to its types:
+Take an application in layers: the domain declares a repository and a mail sender, use cases depend on them, the
+infrastructure implements them, and handlers call the use cases. Each layer keeps its constructors next to its types:
 
 ```go
 // package user, the domain
@@ -31,12 +31,20 @@ type Repository interface {
 	Find(ctx context.Context, id ID) (User, error)
 }
 
+// package mail, the domain
+type Sender interface {
+	Send(ctx context.Context, m Message) error
+}
+
 // package usecase
-func NewRegisterUser(repo user.Repository, log *slog.Logger) *RegisterUser
+func NewRegisterUser(repo user.Repository, mailer mail.Sender) *RegisterUser
 func NewGetUser(repo user.Repository) *GetUser
 
 // package postgres, the infrastructure
 func NewUserRepository(db *sql.DB) *UserRepository
+
+// package sendgrid, an external API
+func NewSender(cfg config.Config) *Sender
 
 // package handler
 func NewUser(registerUser *usecase.RegisterUser, getUser *usecase.GetUser) *User
@@ -47,7 +55,7 @@ func Load() (Config, error)
 
 The composition root already has a struct that holds what the program is made of — the server, with its handlers and
 its routes. Mark it `//kanna:container`. What only this root can decide goes next to it: which implementation serves
-the domain's interface, and how to open what the standard library provides.
+each of the domain's interfaces, and how to open what the standard library provides.
 
 ```go
 package main
@@ -59,6 +67,7 @@ package main
 //kanna:container
 type server struct {
 	_ user.Repository `di:"with=postgres.NewUserRepository"`
+	_ mail.Sender     `di:"with=sendgrid.NewSender"`
 
 	users *handler.User
 }
@@ -77,10 +86,6 @@ func openDB(cfg config.Config) (*sql.DB, func(), error) {
 	}
 	return db, func() { db.Close() }, nil
 }
-
-func newLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(os.Stdout, nil))
-}
 ```
 
 `go generate ./...` writes `di_gen.go` next to the container:
@@ -94,6 +99,7 @@ import (
 	"example.com/shop/internal/config"
 	"example.com/shop/internal/handler"
 	"example.com/shop/internal/infra/postgres"
+	"example.com/shop/internal/infra/sendgrid"
 	"example.com/shop/internal/usecase"
 )
 
@@ -108,8 +114,8 @@ func newServer() (*server, func(), error) {
 		return nil, nil, err
 	}
 	repo := postgres.NewUserRepository(db)
-	log := newLogger()
-	registerUser := usecase.NewRegisterUser(repo, log)
+	mailer := sendgrid.NewSender(cfg)
+	registerUser := usecase.NewRegisterUser(repo, mailer)
 	getUser := usecase.NewGetUser(repo)
 	users := handler.NewUser(registerUser, getUser)
 
@@ -132,9 +138,9 @@ func main() {
 ```
 
 `*usecase.RegisterUser` comes from `usecase.NewRegisterUser`, the function next to its type; `*sql.DB` from `openDB`,
-next to the container; `user.Repository`, the domain's interface, from the implementation the container names, which
-both use cases share. Nothing is registered. When a constructor's parameters change, the next `go generate` changes the
-code that calls it.
+next to the container; `user.Repository` and `mail.Sender`, the domain's interfaces, from the implementations the
+container names. `config.Config` is loaded once, and `openDB` and `sendgrid.NewSender` share it. Nothing is registered.
+When a constructor's parameters change, the next `go generate` changes the code that calls it.
 
 ## Providers
 
@@ -167,7 +173,7 @@ Finding none stops generation, and so do two at the same level. The error traces
 
 ```console
 $ go generate
-./server.go:11:2: error: nothing provides *slog.Logger, which usecase.NewRegisterUser needs
+./server.go:11:2: error: nothing provides mail.Sender, which usecase.NewRegisterUser needs
   via server.users → handler.NewUser → usecase.NewRegisterUser
   return one from a function in package main, take it with di:"arg", or choose a provider with di:"with=..."
 ./server.go:11:2: error: 2 functions in package usecase return *usecase.GetUser
@@ -333,9 +339,9 @@ neither is anything for implementing `io.Closer`.
 
 A container declared in a `_test.go` file is generated too, into `di_gen_test.go` next to it, in the package that file
 declares — the package itself or its external `_test` package. This one, in the package itself, embeds the server, so
-it is the server, built here with the repository taken as an argument instead of chosen with `with=`. Nothing then
-needs `*sql.DB` or `config.Config`: `openDB` and `config.Load` are not called, and `newTestServer` returns neither a
-cleanup nor an error.
+it is the server, built here with the repository and the sender taken as arguments instead of chosen with `with=`.
+Nothing then needs `*sql.DB` or `config.Config`: `openDB` and `config.Load` are not called, and `newTestServer` returns
+neither a cleanup nor an error.
 
 ```go
 //kanna:container
@@ -343,10 +349,11 @@ type testServer struct {
 	*server
 
 	_ user.Repository `di:"arg"`
+	_ mail.Sender     `di:"arg"`
 }
 
 func TestRegisterUser(t *testing.T) {
-	s := newTestServer(memory.NewUserRepository())
+	s := newTestServer(memory.NewUserRepository(), &fakeSender{})
 	srv := httptest.NewServer(s.routes())
 	defer srv.Close()
 	// ...
@@ -388,7 +395,7 @@ itself, which lists a package's files before it runs the generators; the file is
 ## Example
 
 [`example`](example) wires a small shop in the layers above — domain, use cases, infrastructure, handlers — finding its
-providers through a binding to an interface, an argument, and an embedded container, with cleanups, a must variant, and
+providers through bindings to interfaces, an argument, and an embedded container, with cleanups, a must variant, and
 a test container that swaps the repository for one in memory. CI regenerates it and fails if the output would change.
 
 ## Development

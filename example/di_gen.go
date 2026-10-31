@@ -6,13 +6,14 @@ import (
 	"io"
 
 	"github.com/go-kanna/di/example/internal/config"
+	"github.com/go-kanna/di/example/internal/console"
 	"github.com/go-kanna/di/example/internal/handler"
 	"github.com/go-kanna/di/example/internal/memory"
 	"github.com/go-kanna/di/example/internal/usecase"
 )
 
 // newServer initializes dependencies and constructs server.
-func newServer(logs io.Writer) (*server, func(), error) {
+func newServer(out io.Writer) (*server, func(), error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, nil, err
@@ -22,8 +23,8 @@ func newServer(logs io.Writer) (*server, func(), error) {
 		return nil, nil, err
 	}
 	repo := memory.NewUserRepository(store)
-	log := newLogger(logs)
-	registerUser := usecase.NewRegisterUser(repo, log)
+	mailer := console.NewSender(out)
+	registerUser := usecase.NewRegisterUser(repo, mailer)
 	getUser := usecase.NewGetUser(repo)
 	users := handler.NewUser(registerUser, getUser)
 
@@ -33,8 +34,8 @@ func newServer(logs io.Writer) (*server, func(), error) {
 }
 
 // mustNewServer initializes dependencies and constructs server or panics on failure.
-func mustNewServer(logs io.Writer) (*server, func()) {
-	v, cleanup, err := newServer(logs)
+func mustNewServer(out io.Writer) (*server, func()) {
+	v, cleanup, err := newServer(out)
 	if err != nil {
 		panic(err)
 	}

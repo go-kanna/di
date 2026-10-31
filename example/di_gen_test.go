@@ -5,15 +5,16 @@ package main
 import (
 	"io"
 
+	"github.com/go-kanna/di/example/internal/console"
 	"github.com/go-kanna/di/example/internal/handler"
 	"github.com/go-kanna/di/example/internal/usecase"
 	"github.com/go-kanna/di/example/internal/user"
 )
 
 // newTestServer initializes dependencies and constructs testServer.
-func newTestServer(repository user.Repository, logs io.Writer) *testServer {
-	log := newLogger(logs)
-	registerUser := usecase.NewRegisterUser(repository, log)
+func newTestServer(repository user.Repository, out io.Writer) *testServer {
+	mailer := console.NewSender(out)
+	registerUser := usecase.NewRegisterUser(repository, mailer)
 	getUser := usecase.NewGetUser(repository)
 	users := handler.NewUser(registerUser, getUser)
 

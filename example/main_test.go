@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +12,7 @@ import (
 
 // testServer is the server, built here with a repository the test hands it
 // instead of the one in memory. It embeds the container, so it takes what the
-// server takes too, logs included, and has its routes.
+// server takes too, where the mail goes included, and has its routes.
 //
 //kanna:container
 type testServer struct {
@@ -42,7 +41,8 @@ func TestRegister(t *testing.T) {
 	t.Parallel()
 
 	repo := fakeRepo{}
-	s := newTestServer(repo, io.Discard)
+	var out strings.Builder
+	s := newTestServer(repo, &out)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/users", strings.NewReader(`{"name":"alice"}`))
@@ -52,5 +52,8 @@ func TestRegister(t *testing.T) {
 	}
 	if _, ok := repo["alice"]; !ok {
 		t.Error("the test's repository did not get alice")
+	}
+	if !strings.Contains(out.String(), "mail to alice") {
+		t.Errorf("no welcome mail to alice: %q", out.String())
 	}
 }
