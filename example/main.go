@@ -9,13 +9,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 
 	"github.com/go-kanna/di/example/internal/handler"
+	"github.com/go-kanna/di/example/internal/mail"
 	"github.com/go-kanna/di/example/internal/user"
 )
 
@@ -27,12 +27,13 @@ import (
 //
 //kanna:container must
 type server struct {
-	// The constructor takes where the logs go, named logs.
-	_ io.Writer `di:"arg=logs"`
+	// The constructor takes where the mail goes, named out.
+	_ io.Writer `di:"arg=out"`
 
-	// The domain's interface is served by the infrastructure's
-	// implementation, which memory.NewUserRepository returns as a struct.
+	// The domain's interfaces are served by the infrastructure's
+	// implementations, which these functions return as structs.
 	_ user.Repository `di:"with=memory.NewUserRepository"`
+	_ mail.Sender     `di:"with=console.NewSender"`
 
 	users *handler.User
 }
@@ -42,20 +43,6 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /users", s.users.Register)
 	mux.HandleFunc("GET /users/{name}", s.users.Get)
 	return mux
-}
-
-// newLogger provides a *slog.Logger. A type of the standard library has no
-// provider kanna-di would look for, so it is provided next to the container.
-func newLogger(logs io.Writer) *slog.Logger {
-	return slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{
-		// Leave out the time, so that the output is the same on every run.
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey {
-				return slog.Attr{}
-			}
-			return a
-		},
-	}))
 }
 
 func main() {

@@ -5,8 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 
+	"github.com/go-kanna/di/example/internal/mail"
 	"github.com/go-kanna/di/example/internal/user"
 )
 
@@ -15,16 +15,16 @@ var ErrNoName = errors.New("a user needs a name")
 
 // RegisterUser registers a user.
 type RegisterUser struct {
-	repo user.Repository
-	log  *slog.Logger
+	repo   user.Repository
+	mailer mail.Sender
 }
 
 // NewRegisterUser provides a RegisterUser.
-func NewRegisterUser(repo user.Repository, log *slog.Logger) *RegisterUser {
-	return &RegisterUser{repo: repo, log: log}
+func NewRegisterUser(repo user.Repository, mailer mail.Sender) *RegisterUser {
+	return &RegisterUser{repo: repo, mailer: mailer}
 }
 
-// Do registers the user called name.
+// Do registers the user called name and sends them a welcome mail.
 func (uc *RegisterUser) Do(ctx context.Context, name string) (user.User, error) {
 	if name == "" {
 		return user.User{}, ErrNoName
@@ -33,7 +33,9 @@ func (uc *RegisterUser) Do(ctx context.Context, name string) (user.User, error) 
 	if err := uc.repo.Save(ctx, u); err != nil {
 		return user.User{}, fmt.Errorf("register %s: %w", name, err)
 	}
-	uc.log.InfoContext(ctx, "registered", "name", name)
+	if err := uc.mailer.Send(ctx, mail.Message{To: name, Subject: "Welcome"}); err != nil {
+		return user.User{}, fmt.Errorf("welcome %s: %w", name, err)
+	}
 	return u, nil
 }
 

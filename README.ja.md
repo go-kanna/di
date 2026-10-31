@@ -19,7 +19,7 @@ go get -tool github.com/go-kanna/di/cmd/kanna-di
 
 ## 使い方
 
-層に分かれたアプリケーションを考えます。ドメインがリポジトリを宣言し、ユースケースがそれに依存し、インフラストラクチャがそれを実装し、ハンドラがユースケースを呼び出します。各層は、コンストラクタを型と同じパッケージに置きます:
+層に分かれたアプリケーションを考えます。ドメインがリポジトリとメール送信者を宣言し、ユースケースがそれらに依存し、インフラストラクチャがそれらを実装し、ハンドラがユースケースを呼び出します。各層は、コンストラクタを型と同じパッケージに置きます:
 
 ```go
 // package user, the domain
@@ -28,12 +28,20 @@ type Repository interface {
 	Find(ctx context.Context, id ID) (User, error)
 }
 
+// package mail, the domain
+type Sender interface {
+	Send(ctx context.Context, m Message) error
+}
+
 // package usecase
-func NewRegisterUser(repo user.Repository, log *slog.Logger) *RegisterUser
+func NewRegisterUser(repo user.Repository, mailer mail.Sender) *RegisterUser
 func NewGetUser(repo user.Repository) *GetUser
 
 // package postgres, the infrastructure
 func NewUserRepository(db *sql.DB) *UserRepository
+
+// package sendgrid, an external API
+func NewSender(cfg config.Config) *Sender
 
 // package handler
 func NewUser(registerUser *usecase.RegisterUser, getUser *usecase.GetUser) *User
@@ -42,7 +50,7 @@ func NewUser(registerUser *usecase.RegisterUser, getUser *usecase.GetUser) *User
 func Load() (Config, error)
 ```
 
-コンポジションルートには、プログラムを構成するものを保持する構造体がすでにあります。ハンドラとルーティングを持つサーバです。これに `//kanna:container` を付けます。コンポジションルートでしか決められないことは、その構造体のそばに書きます。ドメインのインターフェースにどの実装を使うかと、標準ライブラリが提供するものの開き方です。
+コンポジションルートには、プログラムを構成するものを保持する構造体がすでにあります。ハンドラとルーティングを持つサーバです。これに `//kanna:container` を付けます。コンポジションルートでしか決められないことは、その構造体のそばに書きます。ドメインの各インターフェースにどの実装を使うかと、標準ライブラリが提供するものの開き方です。
 
 ```go
 package main
@@ -54,6 +62,7 @@ package main
 //kanna:container
 type server struct {
 	_ user.Repository `di:"with=postgres.NewUserRepository"`
+	_ mail.Sender     `di:"with=sendgrid.NewSender"`
 
 	users *handler.User
 }
@@ -72,10 +81,6 @@ func openDB(cfg config.Config) (*sql.DB, func(), error) {
 	}
 	return db, func() { db.Close() }, nil
 }
-
-func newLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(os.Stdout, nil))
-}
 ```
 
 `go generate ./...` を実行すると、コンテナと同じディレクトリに `di_gen.go` が書き出されます:
@@ -89,6 +94,7 @@ import (
 	"example.com/shop/internal/config"
 	"example.com/shop/internal/handler"
 	"example.com/shop/internal/infra/postgres"
+	"example.com/shop/internal/infra/sendgrid"
 	"example.com/shop/internal/usecase"
 )
 
@@ -103,8 +109,8 @@ func newServer() (*server, func(), error) {
 		return nil, nil, err
 	}
 	repo := postgres.NewUserRepository(db)
-	log := newLogger()
-	registerUser := usecase.NewRegisterUser(repo, log)
+	mailer := sendgrid.NewSender(cfg)
+	registerUser := usecase.NewRegisterUser(repo, mailer)
 	getUser := usecase.NewGetUser(repo)
 	users := handler.NewUser(registerUser, getUser)
 
@@ -126,7 +132,7 @@ func main() {
 }
 ```
 
-`*usecase.RegisterUser` は、型と同じパッケージにある関数 `usecase.NewRegisterUser` から得られます。`*sql.DB` は、コンテナと同じパッケージにある `openDB` から得られます。ドメインのインターフェースである `user.Repository` は、コンテナが指定した実装から得られ、2 つのユースケースはこの実装を共有します。登録するものはありません。コンストラクタのパラメータが変わると、次の `go generate` がそれを呼び出すコードを変更します。
+`*usecase.RegisterUser` は、型と同じパッケージにある関数 `usecase.NewRegisterUser` から得られます。`*sql.DB` は、コンテナと同じパッケージにある `openDB` から得られます。ドメインのインターフェースである `user.Repository` と `mail.Sender` は、コンテナが指定した実装から得られます。`config.Config` は一度だけ読み込まれ、`openDB` と `sendgrid.NewSender` で共有されます。登録するものはありません。コンストラクタのパラメータが変わると、次の `go generate` がそれを呼び出すコードを変更します。
 
 ## プロバイダ
 
@@ -153,7 +159,7 @@ kanna-di は必要な型ごとに、次の順に探して最初に見つかっ�
 
 ```console
 $ go generate
-./server.go:11:2: error: nothing provides *slog.Logger, which usecase.NewRegisterUser needs
+./server.go:11:2: error: nothing provides mail.Sender, which usecase.NewRegisterUser needs
   via server.users → handler.NewUser → usecase.NewRegisterUser
   return one from a function in package main, take it with di:"arg", or choose a provider with di:"with=..."
 ./server.go:11:2: error: 2 functions in package usecase return *usecase.GetUser
@@ -293,7 +299,7 @@ func newServer() (*server, func(), error) {
 
 ## テスト
 
-`_test.go` ファイルで宣言されたコンテナも生成の対象で、同じディレクトリの `di_gen_test.go` に、そのファイルが宣言するパッケージ（パッケージ自体、またはその外部 `_test` パッケージ）のコードとして生成されます。次のコンテナはパッケージ自体にあり、サーバを埋め込んでいるので、サーバそのものです。ただし、リポジトリを `with=` で選ぶ代わりに引数として受け取る形で、ここで組み立てられます。すると `*sql.DB` も `config.Config` も必要なくなるので、`openDB` と `config.Load` は呼び出されず、`newTestServer` はクリーンアップもエラーも返しません。
+`_test.go` ファイルで宣言されたコンテナも生成の対象で、同じディレクトリの `di_gen_test.go` に、そのファイルが宣言するパッケージ（パッケージ自体、またはその外部 `_test` パッケージ）のコードとして生成されます。次のコンテナはパッケージ自体にあり、サーバを埋め込んでいるので、サーバそのものです。ただし、リポジトリと送信者を `with=` で選ぶ代わりに引数として受け取る形で、ここで組み立てられます。すると `*sql.DB` も `config.Config` も必要なくなるので、`openDB` と `config.Load` は呼び出されず、`newTestServer` はクリーンアップもエラーも返しません。
 
 ```go
 //kanna:container
@@ -301,10 +307,11 @@ type testServer struct {
 	*server
 
 	_ user.Repository `di:"arg"`
+	_ mail.Sender     `di:"arg"`
 }
 
 func TestRegisterUser(t *testing.T) {
-	s := newTestServer(memory.NewUserRepository())
+	s := newTestServer(memory.NewUserRepository(), &fakeSender{})
 	srv := httptest.NewServer(s.routes())
 	defer srv.Close()
 	// ...
