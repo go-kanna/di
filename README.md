@@ -10,7 +10,7 @@
 kanna-di writes the constructor of a container struct. Each field gets its value from a provider — the function next to
 the field's type, or one next to the container — and the providers those need in turn, called in order in plain Go.
 
-Part of the [kanna](https://github.com/go-kanna/kanna) family of code generators. Requires Go 1.26. There is nothing to
+Part of the [kanna](https://go-kanna.github.io/) family of code generators. Requires Go 1.26. There is nothing to
 import at run time: the generated code calls your own functions and nothing else.
 
 ## Install
