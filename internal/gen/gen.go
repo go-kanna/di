@@ -33,7 +33,8 @@ func Command() cli.Command[config] {
 		Flags: func(fs *flag.FlagSet, cfg *config) {
 			fs.StringVar(&cfg.tags, "tags", "", "comma-separated build tags")
 		},
-		Run: run,
+		Run:  run,
+		Deps: reportDeps,
 	}
 }
 
