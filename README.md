@@ -5,6 +5,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/go-kanna/di.svg)](https://pkg.go.dev/github.com/go-kanna/di)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/tag/go-kanna/di?label=release&sort=semver)](https://github.com/go-kanna/di/tags)
+[![日本語](https://img.shields.io/badge/lang-%E6%97%A5%E6%9C%AC%E8%AA%9E-blue.svg)](README.ja.md)
 
 kanna-di writes the constructor of a container struct. Each field gets its value from a provider — the function next to
 the field's type, or one next to the container — and the providers those need in turn, called in order in plain Go.
