@@ -2,6 +2,7 @@ package gen_test
 
 import (
 	"maps"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -65,6 +66,39 @@ func TestPlans_Shop(t *testing.T) {
 	}
 	if len(diags) > 0 {
 		t.Errorf("diagnostics = %q, want none", diags)
+	}
+}
+
+// TestPlans_FunctionsOfBothPackagesAreCountedTogether adds to the container's
+// package a function returning what usecase.NewGetUser does, which would
+// otherwise take its place without a word.
+func TestPlans_FunctionsOfBothPackagesAreCountedTogether(t *testing.T) {
+	t.Parallel()
+
+	admin, err := filepath.Abs("testdata/shop/app/admin.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	set, err := packages.Load([]string{"./testdata/shop/config", "./testdata/shop/user", "./testdata/shop/usecase",
+		"./testdata/shop/postgres", "./testdata/shop/handler", "./testdata/shop/app"}, packages.Config{
+		Overlay: map[string][]byte{admin: []byte("package app\n\n" +
+			"import \"github.com/go-kanna/di/internal/gen/testdata/shop/usecase\"\n\n" +
+			"func adminGetUser() *usecase.GetUser { return nil }\n")},
+	})
+	if err != nil || len(set.Diags) > 0 {
+		t.Fatalf("load: %v %v", err, set.Diags)
+	}
+
+	_, diags := gen.Plans(set.Fset, set.Packages, module)
+	for _, want := range []string{
+		"error: 2 functions in packages app and usecase return *usecase.GetUser",
+		"  adminGetUser (",
+		"  usecase.NewGetUser (",
+		"  choose one with _ *usecase.GetUser `di:\"with=adminGetUser\"`",
+	} {
+		if !strings.Contains(strings.Join(diags, "\n"), want) {
+			t.Errorf("diagnostics =\n%s\nwant one to say\n%s", strings.Join(diags, "\n"), want)
+		}
 	}
 }
 

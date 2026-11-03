@@ -258,14 +258,13 @@ func (pl *planner) find(t types.Type, k string, via []string) int {
 		return s
 	}
 
-	var near []string
-	ps, n := pl.candidates(pl.own, t, true)
-	near = append(near, n...)
-	if len(ps) == 0 {
-		if home := homeOf(t); home != nil && home.Path() != pl.own.Path() && pl.w.local(home) {
-			ps, n = pl.candidates(home, t, false)
-			near = append(near, n...)
-		}
+	// The functions of both packages count together, so that one added to
+	// either cannot take the place of the other without a word.
+	ps, near := pl.candidates(pl.own, t, true)
+	if home := homeOf(t); home != nil && home.Path() != pl.own.Path() && pl.w.local(home) {
+		hps, n := pl.candidates(home, t, false)
+		ps = append(ps, hps...)
+		near = append(near, n...)
 	}
 
 	switch len(ps) {
@@ -416,7 +415,11 @@ func (pl *planner) nearly(t types.Type) []string {
 
 // ambiguous reports that more than one provider of t is in reach.
 func (pl *planner) ambiguous(t types.Type, via []string, ps []provider) {
-	d := diag.Errorf(pl.root.Pos, "%d functions in package %s return %s", len(ps), ps[0].fn.Pkg().Name(), pl.typeString(t))
+	where := "package " + ps[0].fn.Pkg().Name()
+	if last := ps[len(ps)-1].fn.Pkg(); last.Path() != ps[0].fn.Pkg().Path() {
+		where = "packages " + ps[0].fn.Pkg().Name() + " and " + last.Name()
+	}
+	d := diag.Errorf(pl.root.Pos, "%d functions in %s return %s", len(ps), where, pl.typeString(t))
 	for _, p := range ps {
 		pos := p.pos
 		pos.Filename = diag.ShortPath(pl.w.dir, pos.Filename)

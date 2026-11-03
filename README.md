@@ -166,8 +166,9 @@ For each type it needs, kanna-di takes the first of these that has one:
 2. the provider the container chooses for the type (`di:"with=..."`)
 3. what the container embeds: an exported field of a struct it embeds or declares as `_`, or the `with=` of a
    container it builds in place (see [Containers](#containers))
-4. a function in the container's package, exported or not
-5. an exported function in the package declaring the type, when that package is in your module or your go.work
+4. a function in the container's package, exported or not, or an exported function in the package declaring the type,
+   when that package is in your module or your go.work. The functions of the two packages count together, so that
+   one in either never hides one in the other
 
 Finding none stops generation, and so do two at the same level. The error traces the need back to the field:
 
