@@ -385,8 +385,9 @@ kanna-di [flags] [packages]
 | Flag           | Meaning                                                                                      |
 |----------------|----------------------------------------------------------------------------------------------|
 | `-tags <list>` | comma-separated build tags                                                                   |
-| `-check`       | verify the output is up to date instead of writing it, including that no output is left over |
+| `-check`       | verify the output is up to date instead of writing it, including that no output is left over; `KANNA_CHECK=1` does the same |
 | `-v`           | list the files written, removed, or left unchanged                                           |
+| `-deps`        | print what a run reads and writes as JSON, for the `kanna` command, and exit                 |
 | `-version`     | print the version                                                                            |
 
 The packages say where the containers are, not where providers come from, and default to the one in the current
