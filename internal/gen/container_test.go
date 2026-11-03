@@ -264,7 +264,32 @@ func TestContainers_Diagnostics(t *testing.T) {
 		{
 			name: "argument of a type without a name",
 			src:  "\n//kanna:container\ntype c struct {\n\t_ []string `di:\"arg\"`\n}\n",
-			want: `[]string has no name to call the parameter by; write di:"arg=<name>" (field _)`,
+			want: "[]string has no name of its own, so it cannot be handed out by type: " +
+				"it would go to every []string parameter (field _)\n  declare a type of its own for it, such as type DSN string",
+		},
+		{
+			name: "argument of a type without a name, named",
+			src:  "\n//kanna:container\ntype c struct {\n\t_ string `di:\"arg=dsn\"`\n}\n",
+			want: "string has no name of its own, so it cannot be handed out by type: " +
+				"it would go to every string parameter (field _)",
+		},
+		{
+			name: "argument of a type without a name in a named field",
+			src:  "\n//kanna:container\ntype c struct {\n\tdsn string `di:\"arg\"`\n}\n",
+			want: "x.go:6:2: error: string has no name of its own, so it cannot be handed out by type: " +
+				"it would go to every string parameter (field dsn)",
+		},
+		{
+			name: "choice of a type without a name",
+			src:  "\n//kanna:container\ntype c struct {\n\t_ string `di:\"with=loadDSN\"`\n}\n",
+			want: "string has no name of its own, so it cannot be handed out by type: " +
+				"it would go to every string parameter (field _)",
+		},
+		{
+			name: "blank struct serving nothing but types without a name",
+			src:  "\ntype Settings struct{ DSN string; Port int }\n//kanna:container\ntype c struct {\n\t_ Settings\n}\n",
+			want: `a blank field must say what it declares: di:"arg" or di:"with=<provider>" (field _)` +
+				"\n  the exported fields of Settings have no type of their own, which kanna-di does not hand out",
 		},
 		{
 			name: "argument hiding a predeclared name",

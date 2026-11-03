@@ -258,14 +258,13 @@ func (pl *planner) find(t types.Type, k string, via []string) int {
 		return s
 	}
 
-	var near []string
-	ps, n := pl.candidates(pl.own, t, true)
-	near = append(near, n...)
-	if len(ps) == 0 {
-		if home := homeOf(t); home != nil && home.Path() != pl.own.Path() && pl.w.local(home) {
-			ps, n = pl.candidates(home, t, false)
-			near = append(near, n...)
-		}
+	// The functions of both packages count together, so that one added to
+	// either cannot take the place of the other without a word.
+	ps, near := pl.candidates(pl.own, t, true)
+	if home := homeOf(t); home != nil && home.Path() != pl.own.Path() && pl.w.local(home) {
+		hps, n := pl.candidates(home, t, false)
+		ps = append(ps, hps...)
+		near = append(near, n...)
 	}
 
 	switch len(ps) {
@@ -375,12 +374,24 @@ func (pl *planner) missing(t types.Type, via []string, near []string) {
 		d = d.WithHints("via " + strings.Join(via, " → "))
 	}
 	d = d.WithHints(near...)
-	if home := homeOf(t); home != nil && home.Path() != pl.own.Path() && !pl.w.local(home) {
-		d = d.WithHints(home.Path() + " is not in your module, so kanna-di does not look there")
+	switch home := homeOf(t); {
+	case !providable(t):
+		d = d.WithHints(pl.typeString(t) + " has no name of its own, so kanna-di does not hand it out by type")
+		if len(via) > 1 {
+			d = d.WithHints(fmt.Sprintf(
+				"call %s from a function in package %s that passes it, or have it take a type of its own, such as type DSN string",
+				via[len(via)-1], pl.own.Name()))
+		} else {
+			d = d.WithHints(ownTypeHint)
+		}
+	default:
+		if home != nil && home.Path() != pl.own.Path() && !pl.w.local(home) {
+			d = d.WithHints(home.Path() + " is not in your module, so kanna-di does not look there")
+		}
+		d = d.WithHints(fmt.Sprintf(
+			`return one from a function in package %s, take it with di:"arg", or choose a provider with di:"with=..."`,
+			pl.own.Name()))
 	}
-	d = d.WithHints(fmt.Sprintf(
-		`return one from a function in package %s, take it with di:"arg", or choose a provider with di:"with=..."`,
-		pl.own.Name()))
 	if len(via) == 1 && pl.root.Name != "_" {
 		d = d.WithHints(fmt.Sprintf(`or leave %s at its zero value with di:"-"`, via[0]))
 	}
@@ -416,7 +427,11 @@ func (pl *planner) nearly(t types.Type) []string {
 
 // ambiguous reports that more than one provider of t is in reach.
 func (pl *planner) ambiguous(t types.Type, via []string, ps []provider) {
-	d := diag.Errorf(pl.root.Pos, "%d functions in package %s return %s", len(ps), ps[0].fn.Pkg().Name(), pl.typeString(t))
+	where := "package " + ps[0].fn.Pkg().Name()
+	if last := ps[len(ps)-1].fn.Pkg(); last.Path() != ps[0].fn.Pkg().Path() {
+		where = "packages " + ps[0].fn.Pkg().Name() + " and " + last.Name()
+	}
+	d := diag.Errorf(pl.root.Pos, "%d functions in %s return %s", len(ps), where, pl.typeString(t))
 	for _, p := range ps {
 		pos := p.pos
 		pos.Filename = diag.ShortPath(pl.w.dir, pos.Filename)

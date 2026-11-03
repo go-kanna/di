@@ -18,6 +18,10 @@ import (
 // directiveKey spells the directive //kanna:container.
 const directiveKey = "container"
 
+// ownTypeHint says what to do with a value of a type without a name of its
+// own, which nothing hands out by type.
+const ownTypeHint = "declare a type of its own for it, such as type DSN string"
+
 // The files generated next to the containers: one for the containers of a
 // package, one for those of its tests.
 const (
@@ -245,26 +249,33 @@ func fieldsOf(s scan.Struct) ([]field, []diag.Diag) {
 			continue
 		}
 		f := field{Field: sf, tag: t}
+		pkg := s.Named.Obj().Pkg()
 
 		switch {
-		case f.blank() && f.source == fromType && len(promotedOf(sf.Type, s.Named.Obj().Pkg())) == 0:
+		case f.blank() && f.source == fromType && len(promotedOf(sf.Type, pkg)) == 0:
 			// Resolved like any field, a blank struct serves the container
 			// through its fields; anything else would be resolved for nothing.
-			diags = append(diags, fieldDiag(sf, errors.New(
-				`a blank field must say what it declares: di:"arg" or di:"with=<provider>"`)))
+			d := fieldDiag(sf, errors.New(`a blank field must say what it declares: di:"arg" or di:"with=<provider>"`))
+			if hasExportedFields(sf.Type) {
+				d = d.WithHints(fmt.Sprintf("the exported fields of %s have no type of their own, which kanna-di does not hand out",
+					typeString(sf.Type, pkg)))
+			}
+			diags = append(diags, d)
 			continue
 		case f.blank() && f.source == fromNowhere:
 			diags = append(diags, fieldDiag(sf, errors.New(`di:"-" on a blank field says nothing; remove the field`)))
 			continue
-		case f.source == fromArg && f.paramName() == "":
+		case (f.source == fromArg || f.source == fromRef) && !providable(sf.Type):
+			ts := typeString(sf.Type, pkg)
 			diags = append(diags, fieldDiag(sf, fmt.Errorf(
-				`%s has no name to call the parameter by; write di:"arg=<name>"`, typeString(sf.Type, s.Named.Obj().Pkg()))))
+				"%s has no name of its own, so it cannot be handed out by type: it would go to every %s parameter", ts, ts)).
+				WithHints(ownTypeHint))
 			continue
 		case f.source == fromArg && f.param != "" && types.Universe.Lookup(f.param) != nil:
 			diags = append(diags, fieldDiag(sf, fmt.Errorf(
 				`di:"arg=%s": a parameter named %s would hide Go's own %s`, f.param, f.param, f.param)))
 			continue
-		case f.source == fromArg && f.param != "" && s.Named.Obj().Pkg().Scope().Lookup(f.param) != nil:
+		case f.source == fromArg && f.param != "" && pkg.Scope().Lookup(f.param) != nil:
 			diags = append(diags, fieldDiag(sf, fmt.Errorf(
 				`di:"arg=%s": a parameter named %s would hide the package's own %s`, f.param, f.param, f.param)))
 			continue

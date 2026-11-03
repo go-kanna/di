@@ -155,9 +155,10 @@ any other named type — or a pointer to one:
 | `T, func(), error` | both                                               |
 
 A variadic parameter is left empty. A provider is called once per constructor, and everything that needs its result
-shares it. A `string` or a `[]byte` is never looked up, so that a function returning one for its own reasons is not
-taken for a provider; give such a value a type of its own, such as `type DSN string`, or take it with
-`di:"arg=<name>"`. A must variant beside the function it wraps, `MustNewDeps` beside `NewDeps`, is passed over for that
+shares it. A type without a name of its own, such as `string`, `int` or `[]byte`, is never handed out by type, since
+its type does not tell one value from another, a DSN from an address: a function returning one is no provider, and
+neither `di:"arg"`, `with=`, nor a field of a struct the container embeds serves one. Give such a value a type of its
+own, such as `type DSN string`. A must variant beside the function it wraps, `MustNewDeps` beside `NewDeps`, is passed over for that
 function, so that the error reaches the constructor instead of a panic.
 
 For each type it needs, kanna-di takes the first of these that has one:
@@ -166,8 +167,12 @@ For each type it needs, kanna-di takes the first of these that has one:
 2. the provider the container chooses for the type (`di:"with=..."`)
 3. what the container embeds: an exported field of a struct it embeds or declares as `_`, or the `with=` of a
    container it builds in place (see [Containers](#containers))
-4. a function in the container's package, exported or not
-5. an exported function in the package declaring the type, when that package is in your module or your go.work
+4. a function in the container's package, exported or not, or an exported function in the package declaring the type,
+   when that package is in your module or your go.work. The functions of the two packages count together, so that
+   one in either never hides one in the other
+
+What the container embeds comes before any function, as embedding says what the container holds. A field added to a
+struct it embeds therefore serves the container from then on, in place of the function that made its type.
 
 Finding none stops generation, and so do two at the same level. The error traces the need back to the field:
 
