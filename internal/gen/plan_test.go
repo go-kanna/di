@@ -220,6 +220,15 @@ func TestPlans_Diagnostics(t *testing.T) {
 			want: "x.go:13:2: error: fakeUsers is declared in a _test.go file, which only tests compile (field _)",
 		},
 		{
+			name:  "a parameter of a type without a name",
+			decls: "func newUsers(dsn string) *Users { return nil }",
+			body:  "users *Users",
+			want: "x.go:13:2: error: nothing provides string, which newUsers needs\n  via c.users → newUsers\n" +
+				"  string has no name of its own, so kanna-di does not hand it out by type\n" +
+				"  call newUsers from a function in package test that passes it, " +
+				"or have it take a type of its own, such as type DSN string",
+		},
+		{
 			name: "a type of another module",
 			body: "log *slog.Logger",
 			want: "x.go:13:2: error: nothing provides *slog.Logger\n" +
@@ -289,7 +298,10 @@ func TestPlans_Diagnostics(t *testing.T) {
 		{
 			name: "a type without a name",
 			body: "names []string",
-			want: "x.go:13:2: error: nothing provides []string\n" + hint,
+			want: "x.go:13:2: error: nothing provides []string\n" +
+				"  []string has no name of its own, so kanna-di does not hand it out by type\n" +
+				"  declare a type of its own for it, such as type DSN string\n" +
+				"  or leave c.names at its zero value with di:\"-\"",
 		},
 		{
 			name:  "a with= misspelled",

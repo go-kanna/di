@@ -285,9 +285,10 @@ func (pl *planner) assigns() []assign {
 // promotedOf returns the exported fields of the struct t is, or points to, by
 // the key of their type, those promoted from structs it embeds included. A
 // shallower field hides a deeper one of its type, as a selector would; fields
-// of one type at one depth are all kept, for the lookup to call ambiguous. An
-// embedded struct is looked into only when from, the container's package, can
-// reach it.
+// of one type at one depth are all kept, for the lookup to call ambiguous. A
+// field of a type without a name of its own is left out, as nothing hands one
+// out by type. An embedded struct is looked into only when from, the
+// container's package, can reach it.
 func promotedOf(t types.Type, from *types.Package) map[string][]promoted {
 	st := structOf(t)
 	if st == nil {
@@ -306,7 +307,7 @@ func promotedOf(t types.Type, from *types.Package) map[string][]promoted {
 		for _, fr := range level {
 			for v := range fr.st.Fields() {
 				path := append(slices.Clip(fr.path), v.Name())
-				if k := typeKey(v.Type()); v.Exported() && !hasKey(out, k) {
+				if k := typeKey(v.Type()); v.Exported() && providable(v.Type()) && !hasKey(out, k) {
 					found[k] = append(found[k], promoted{path: path, typ: v.Type()})
 				}
 				reachable := v.Exported() || v.Pkg().Path() == from.Path()
@@ -320,6 +321,21 @@ func promotedOf(t types.Type, from *types.Package) map[string][]promoted {
 		level = next
 	}
 	return out
+}
+
+// hasExportedFields reports whether t is, or points to, a struct with an
+// exported field of its own.
+func hasExportedFields(t types.Type) bool {
+	st := structOf(t)
+	if st == nil {
+		return false
+	}
+	for v := range st.Fields() {
+		if v.Exported() {
+			return true
+		}
+	}
+	return false
 }
 
 // structOf returns the struct t is, or points to, or nil.

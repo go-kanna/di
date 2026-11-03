@@ -487,6 +487,27 @@ type App struct {
 			want: "error: 2 of what App embeds provide *DB\n  App.Deps.A.DB\n  App.Deps.B.DB\n",
 		},
 		{
+			// The DSN is no more the from address of a mailer than any other
+			// string, so the field serves neither.
+			name: "a field of a type without a name serves nothing",
+			src: `
+type Settings struct {
+	DSN string
+	DB  *DB
+}
+
+func newUsers(db *DB, from string) *Users { return nil }
+
+//kanna:container
+type App struct {
+	_ Settings ` + "`di:\"arg\"`" + `
+
+	Users *Users
+}
+`,
+			want: "error: nothing provides string, which newUsers needs\n",
+		},
+		{
 			name: "an embedded and a blank struct with one type",
 			src: `
 type (
