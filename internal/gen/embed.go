@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-kanna/internal/diag"
+	"github.com/go-kanna/internal/qualifier"
 )
 
 // embedded is a struct a container embeds, by value or by pointer, without
@@ -183,15 +184,13 @@ func (pl *planner) embedStep(e *embedded) int {
 	return e.step
 }
 
-// chooseInner records the with= f of inner, a container built in place. What
-// it names wrong is for the plan of inner itself to report.
+// chooseInner records the with= f of inner, a container built in place, which
+// names its provider as inner's own file and package would. What it names
+// wrong is for the plan of inner itself to report.
 func (pl *planner) chooseInner(f field, inner container) {
-	refs := pl.w.refs
-	if home := homeOf(f.Type); home != nil {
-		refs = append(slices.Clip(refs), home)
-	}
+	own := inner.Named.Obj().Pkg()
 	ch := innerChoice{via: inner.Name + "." + f.Name + " with=" + f.ref.String()}
-	if p, err := pl.w.x.resolve(f.ref, f.Type, pl.own, pl.c.test, refs); err == nil {
+	if p, err := pl.w.x.resolve(f.ref, f.Type, own, inner.test, qualifier.Of(inner.File, own)); err == nil {
 		ch.p = &p
 	}
 	k := typeKey(f.Type)

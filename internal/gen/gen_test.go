@@ -63,6 +63,8 @@ const server = `package app
 import (
 	"example.com/shop/usecase"
 	"example.com/shop/user"
+
+	_ "example.com/shop/postgres"
 )
 
 //go:generate go tool kanna-di
@@ -81,7 +83,7 @@ func TestCommand_GeneratesTheConstructor(t *testing.T) {
 	dir := writeModule(t, with(shop, map[string]string{"app/server.go": server}))
 	app := filepath.Join(dir, "app")
 
-	// postgres is imported by nothing yet; only the with= names it.
+	// postgres is imported as _ alone, for the with= to name it.
 	if code, stdout, stderr := execute(t, app); code != cli.ExitOK || stdout != "" || stderr != "" {
 		t.Fatalf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
@@ -125,6 +127,8 @@ func NewUsers(getUser *usecase.GetUser) *Users { return &Users{getUser: getUser}
 import (
 	"example.com/shop/handler"
 	"example.com/shop/user"
+
+	_ "example.com/shop/postgres"
 )
 
 //kanna:container
@@ -428,6 +432,8 @@ import (
 
 	"example.com/shop/usecase"
 	"example.com/shop/user"
+
+	_ "example.com/shop/app"
 )
 
 //kanna:container
@@ -454,14 +460,17 @@ func TestEnv(t *testing.T) { _ = newEnv() }
 func TestCommand_RefusesAWithNamingWhatOnlyTestsCompile(t *testing.T) {
 	t.Parallel()
 
-	// Loaded with ./..., postgres comes with its test files, whose NewFake
-	// only the tests of postgres compile.
+	// Loaded with ./..., postgres comes with its test files too, but what
+	// server.go imports is postgres without them, as Go builds it, which has
+	// no NewFake.
 	dir := writeModule(t, with(shop, map[string]string{
 		"app/server.go": `package app
 
 import (
 	"example.com/shop/usecase"
 	"example.com/shop/user"
+
+	_ "example.com/shop/postgres"
 )
 
 //kanna:container
@@ -481,8 +490,7 @@ func (*Fake) Find(string) error { return nil }
 `,
 	}))
 	code, _, stderr := execute(t, dir, "./...")
-	want := "app/server.go:10:2: error: postgres.NewFake is declared in a _test.go file, " +
-		"which only tests compile (field _)\n"
+	want := "app/server.go:12:2: error: package postgres has no function NewFake (field _)\n"
 	if code != cli.ExitFailure || !strings.Contains(stderr, want) {
 		t.Errorf("exit %d, stderr %q; want %d and %q", code, stderr, cli.ExitFailure, want)
 	}
@@ -589,13 +597,16 @@ type server struct {
 func TestCommand_RefusesAWithThatWouldImportACycle(t *testing.T) {
 	t.Parallel()
 
-	// fake imports app, so app cannot import fake in turn.
+	// fake imports app, so app cannot import fake in turn, which Go says
+	// before kanna-di reads the with=.
 	dir := writeModule(t, with(shop, map[string]string{
 		"app/server.go": `package app
 
 import (
 	"example.com/shop/usecase"
 	"example.com/shop/user"
+
+	_ "example.com/shop/fake"
 )
 
 // Version is what fake imports app for.
@@ -622,8 +633,8 @@ func (*Repository) Find(string) error { return nil }
 `,
 	}))
 	code, _, stderr := execute(t, filepath.Join(dir, "app"))
-	want := "./server.go:13:2: error: calling fake.NewRepository would import fake, which imports app: " +
-		"an import cycle (field _)\n"
+	want := "error: import cycle not allowed: import stack: " +
+		"[example.com/shop/app example.com/shop/fake example.com/shop/app]\n"
 	if code != cli.ExitFailure || !strings.Contains(stderr, want) {
 		t.Errorf("exit %d, stderr %q; want %d and %q", code, stderr, cli.ExitFailure, want)
 	}

@@ -1,12 +1,13 @@
 package gen
 
 import (
+	"errors"
 	"fmt"
 	"go/token"
 	"go/types"
-	"slices"
-	"strings"
+	"path"
 
+	"github.com/go-kanna/internal/qualifier"
 	"github.com/go-kanna/internal/suggest"
 )
 
@@ -21,25 +22,21 @@ func (e refError) Error() string {
 }
 
 // resolve finds the provider r names for a value of type want, in a container
-// of package own; test says the container is one of own's tests.
+// of package own declared in a file that imports packages as imports say; test
+// says the container is one of own's tests.
 //
-// A bare name is a function of own. A qualified one is looked for in pkgs, the
-// packages with= may name: those of the user's module and the one declaring
-// want. The function's result only has to be assignable to want, which is how
-// an interface gets its implementation.
+// A bare name is a function of own. A qualified one, pkg.F, is a function of
+// the package the file imports as pkg, as Go reads pkg.F in code: nothing else
+// is searched. The function's result only has to be assignable to want, which
+// is how an interface gets its implementation.
 func (x *index) resolve(
-	r ref, want types.Type, own *types.Package, test bool, pkgs []*types.Package,
+	r ref, want types.Type, own *types.Package, test bool, imports qualifier.Scope,
 ) (provider, error) {
 	pkg := own
 	if r.pkg != "" {
 		var err error
-		if pkg, err = pick(r.pkg, want, pkgs); err != nil {
+		if pkg, err = qualified(r, own, imports); err != nil {
 			return provider{}, err
-		}
-		// A package loaded with its tests comes in two copies, and own is the
-		// one that holds the functions of its test files too.
-		if pkg.Path() == own.Path() {
-			pkg = own
 		}
 	}
 	name := r.fn
@@ -87,75 +84,30 @@ func (x *index) resolve(
 		}
 		return provider{}, refError{msg: fmt.Sprintf("%s returns %s, not %s", name, got, wanted)}
 	}
-	if pkg != own && imports(pkg, own.Path()) {
-		return provider{}, refError{msg: fmt.Sprintf("calling %s would import %s, which imports %s: an import cycle",
-			name, pkg.Name(), own.Name())}
-	}
 	return p, nil
 }
 
-// pick returns the one package of pkgs that qualifier names: by its full import
-// path, by the end of it, or by its name.
-func pick(qualifier string, want types.Type, pkgs []*types.Package) (*types.Package, error) {
-	var (
-		matched []*types.Package
-		names   []string
-	)
-	for _, p := range pkgs {
-		if slices.ContainsFunc(matched, func(m *types.Package) bool { return m.Path() == p.Path() }) {
-			continue
-		}
-		if qualifies(qualifier, p.Path(), p.Name()) {
-			matched = append(matched, p)
-		}
-		names = append(names, p.Name())
-	}
-
-	switch len(matched) {
-	case 1:
-		return matched[0], nil
-	case 0:
-		e := refError{msg: fmt.Sprintf("no package %s; with= looks in your module and in the package declaring %s",
-			qualifier, typeString(want, nil))}
-		if s, ok := suggest.Closest(qualifier, names); ok {
-			e.hint = fmt.Sprintf("did you mean %s?", s)
-		}
-		return nil, e
-	default:
-		paths := make([]string, len(matched))
-		for i, m := range matched {
-			paths[i] = m.Path()
-		}
-		slices.Sort(paths)
+// qualified returns the package r.pkg names: the one the container's file
+// imports as r.pkg.
+func qualified(r ref, own *types.Package, imports qualifier.Scope) (*types.Package, error) {
+	if !token.IsIdentifier(r.pkg) {
 		return nil, refError{
-			msg:  fmt.Sprintf("%s could be any of %s", qualifier, strings.Join(paths, ", ")),
-			hint: "write as much of the import path as it takes to tell them apart",
+			msg:  fmt.Sprintf("with=%s names its package by its path; name it as the file imports it", r),
+			hint: fmt.Sprintf("with=%s.%s, importing %s as _ if nothing else uses it", path.Base(r.pkg), r.fn, r.pkg),
 		}
 	}
-}
-
-// imports reports whether pkg imports the package at path, directly or through
-// what it imports.
-func imports(pkg *types.Package, path string) bool {
-	seen := make(map[*types.Package]bool)
-	var walk func(p *types.Package) bool
-	walk = func(p *types.Package) bool {
-		if p.Path() == path {
-			return true
-		}
-		if seen[p] {
-			return false
-		}
-		seen[p] = true
-		return slices.ContainsFunc(p.Imports(), walk)
+	pkg, err := imports.Lookup(r.pkg)
+	if err == nil {
+		return pkg, nil
 	}
-	return slices.ContainsFunc(pkg.Imports(), walk)
-}
-
-// qualifies reports whether qualifier, as written before the function of a
-// with=, names the package at path declaring itself name.
-func qualifies(qualifier, path, name string) bool {
-	return path == qualifier || strings.HasSuffix(path, "/"+qualifier) || name == qualifier
+	e := refError{msg: err.Error()}
+	if qe, ok := errors.AsType[*qualifier.Error](err); ok {
+		e.hint = qe.Hint
+	}
+	if r.pkg == own.Name() {
+		e.hint = "a function of the container's own package goes without one: with=" + r.fn
+	}
+	return nil, e
 }
 
 // funcNames lists the functions of pkg that a with= could name: its exported

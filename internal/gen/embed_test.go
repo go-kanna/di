@@ -328,7 +328,7 @@ func newUsers(repo Repo, env Env) *Users { return nil }
 
 //kanna:container
 type server struct {
-	_ Repo ` + "`di:\"with=test.newImpl\"`" + `
+	_ Repo ` + "`di:\"with=newImpl\"`" + `
 	_ Env  ` + "`di:\"arg\"`" + `
 
 	users *Users

@@ -14,8 +14,10 @@ import (
 	"os"
 	"strings"
 
+	_ "github.com/go-kanna/di/example/internal/console"
 	"github.com/go-kanna/di/example/internal/handler"
 	"github.com/go-kanna/di/example/internal/mail"
+	_ "github.com/go-kanna/di/example/internal/memory"
 	"github.com/go-kanna/di/example/internal/user"
 )
 

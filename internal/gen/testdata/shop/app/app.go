@@ -9,6 +9,8 @@ import (
 	"github.com/go-kanna/di/internal/gen/testdata/shop/config"
 	"github.com/go-kanna/di/internal/gen/testdata/shop/handler"
 	"github.com/go-kanna/di/internal/gen/testdata/shop/user"
+
+	_ "github.com/go-kanna/di/internal/gen/testdata/shop/postgres"
 )
 
 // server serves the shop.

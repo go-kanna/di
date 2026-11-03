@@ -55,6 +55,16 @@ func Load() (Config, error)
 ```go
 package main
 
+import (
+	"net/http"
+
+	"example.com/shop/handler"
+	"example.com/shop/mail"
+	_ "example.com/shop/postgres"
+	_ "example.com/shop/sendgrid"
+	"example.com/shop/user"
+)
+
 //go:generate go tool kanna-di
 
 // server serves the shop's HTTP API.
@@ -183,8 +193,9 @@ $ go generate
 | `<ref>` | 指すもの |
 |---|---|
 | `NewUserRepository` | コンテナのパッケージにある関数 |
-| `postgres.NewUserRepository` | postgres という名前のパッケージにある関数。対象は自分のモジュール内のパッケージと、その型を宣言するパッケージ |
-| `infra/postgres.NewUserRepository` | 同上。そのようなパッケージが 2 つあるときに区別できるだけのインポートパスを書く |
+| `postgres.NewUserRepository` | コンテナのファイルが postgres として import しているパッケージの関数。Go がコードを読むのと同じ |
+
+Go は使っていない名前つきの import を拒むので、`with=` でしか使わないパッケージは `_` で import します。そのパッケージは、上の `postgres` と `sendgrid` のように、パッケージ自身の名前で呼びます。ほかを探すことはしないので、ファイルが import していないパッケージはエラーになり、何を import すればよいかを示します。
 
 プロバイダの戻り値は、その型に代入可能でありさえすれば構いません。インターフェースに実装を与えられるのはこのためです。名前付きフィールドでは、`with=` は値の格納も行います。`_` では選ぶだけで、構造体の場合はそのフィールドがコンテナに値を提供します（[コンテナ](#コンテナ)を参照）。
 

@@ -66,12 +66,9 @@ func TestResolve(t *testing.T) {
 		name, want, ref, provider string
 	}{
 		{name: "a function of the container's package", want: "*DB", ref: "openDB", provider: "test.openDB"},
-		{name: "the container's package by name", want: "*DB", ref: "test.openDB", provider: "test.openDB"},
 		{name: "one returning an error too", want: "*DB", ref: "newDB", provider: "test.newDB"},
 		{name: "by package name", want: "*slog.Logger", ref: "slog.New", provider: "log/slog.New"},
-		{name: "by full path", want: "*slog.Logger", ref: "log/slog.Default", provider: "log/slog.Default"},
 		{name: "an implementation of an interface", want: "io.Writer", ref: "bytes.NewBuffer", provider: "bytes.NewBuffer"},
-		{name: "by the end of the path", want: "*big.Int", ref: "crypto/rand.Int", provider: "crypto/rand.Int"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -98,12 +95,6 @@ func TestResolve_AnotherPackage(t *testing.T) {
 			t.Errorf("resolve(%s) = %q, %v; want %q", ref, got, err, want)
 		}
 	}
-
-	// A package of the module may also be the one declaring the type.
-	got, err := gen.Resolve(pkg, "any", "postgres.NewRepo", postgres, postgres)
-	if err != nil || got != "postgres.NewRepo" {
-		t.Errorf("resolve with the package twice = %q, %v; want postgres.NewRepo", got, err)
-	}
 }
 
 func TestResolve_Errors(t *testing.T) {
@@ -122,21 +113,40 @@ func TestResolve_Errors(t *testing.T) {
 		},
 		{name: "not a function", want: "*DB", ref: "Open", msg: "Open is not a function"},
 		{
-			name: "no package",
+			name: "a package the file does not import",
 			want: "*DB", ref: "postgre.NewRepo",
-			msg: "no package postgre; with= looks in your module and in the package declaring *test.DB; did you mean postgres?",
+			msg: "the file imports no package named postgre; did you mean postgres?",
 		},
 		{
-			name: "two packages of one name",
+			name: "a package of the standard library the file does not import",
+			want: "*slog.Logger", ref: "sql.Open",
+			msg: "the file imports no package named sql; import it, as _ if nothing else uses it",
+		},
+		{
+			name: "the container's own package",
+			want: "*DB", ref: "test.openDB",
+			msg: "the file imports no package named test; a function of the container's own package goes without one: " +
+				"with=openDB",
+		},
+		{
+			name: "a package by its path",
+			want: "*slog.Logger", ref: "log/slog.Default",
+			msg: "with=log/slog.Default names its package by its path; name it as the file imports it; " +
+				"with=slog.Default, importing log/slog as _ if nothing else uses it",
+		},
+		{
+			name: "two packages imported as _ alike",
 			want: "any", ref: "template.New",
-			msg: "template could be any of html/template, text/template; " +
-				"write as much of the import path as it takes to tell them apart",
+			msg: "the file imports more than one package named template: html/template, text/template; " +
+				"a package imported as _ goes by its own name, which these share",
 		},
 		{
-			// math/rand/v2 is named rand, although its path ends in v2.
+			// math/rand/v2 is named rand, although its path ends in v2, and so
+			// is crypto/rand: the name math/rand is imported under does not
+			// keep the two out.
 			name: "packages by their name",
 			want: "*big.Int", ref: "rand.Int",
-			msg: "rand could be any of crypto/rand, math/rand, math/rand/v2",
+			msg: "the file imports more than one package named rand: math/rand, crypto/rand, math/rand/v2",
 		},
 		{
 			name: "no function of another package",
