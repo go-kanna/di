@@ -187,6 +187,8 @@ $ go generate
   via server.users → handler.NewUser
   choose one with _ *usecase.GetUser `di:"with=usecase.NewGetUser"`
 ./server.go:11:2: error: dependency cycle: usecase.NewRegisterUser → mail.NewWelcome → usecase.NewRegisterUser
+  usecase.NewRegisterUser (../../internal/usecase/register_user.go:14:6)
+  mail.NewWelcome (../../internal/mail/welcome.go:9:6)
   via server.users → handler.NewUser
 ```
 

@@ -246,14 +246,16 @@ func TestPlans_Diagnostics(t *testing.T) {
 			name:  "a cycle",
 			decls: "func newUsers(db *DB) *Users { return nil }\nfunc newDB(u *Users) *DB { return nil }",
 			body:  "users *Users",
-			want:  "x.go:13:2: error: dependency cycle: newUsers → newDB → newUsers",
+			want: "x.go:13:2: error: dependency cycle: newUsers → newDB → newUsers\n" +
+				"  newUsers (x.go:16:6)\n  newDB (x.go:17:6)",
 		},
 		{
 			name: "a cycle further down",
 			decls: "func newApp(u *Users) *App { return nil }\nfunc newUsers(db *DB) *Users { return nil }\n" +
 				"func newDB(u *Users) *DB { return nil }",
 			body: "app *App",
-			want: "x.go:13:2: error: dependency cycle: newUsers → newDB → newUsers\n  via c.app → newApp",
+			want: "x.go:13:2: error: dependency cycle: newUsers → newDB → newUsers\n" +
+				"  newUsers (x.go:17:6)\n  newDB (x.go:18:6)\n  via c.app → newApp",
 		},
 		{
 			name:  "an argument nothing needs",
