@@ -3,6 +3,7 @@ package gen
 import (
 	"errors"
 	"fmt"
+	"go/token"
 	"go/types"
 	"slices"
 	"strings"
@@ -169,6 +170,7 @@ type planner struct {
 // the function's full name, and name how the container's source names it.
 type callFrame struct {
 	key, name string
+	pos       token.Position
 	via       []string
 }
 
@@ -328,6 +330,11 @@ func (pl *planner) call(p provider, via []string) int {
 			cycle = append(cycle, f.name)
 		}
 		d := diag.Errorf(pl.root.Pos, "dependency cycle: %s", strings.Join(append(cycle, name), " → "))
+		for _, f := range pl.calling[i:] {
+			pos := f.pos
+			pos.Filename = diag.ShortPath(pl.w.dir, pos.Filename)
+			d = d.WithHints(fmt.Sprintf("%s (%s)", f.name, pos))
+		}
 		if outer := pl.calling[i].via; len(outer) > 1 {
 			d = d.WithHints("via " + strings.Join(outer, " → "))
 		}
@@ -335,7 +342,7 @@ func (pl *planner) call(p provider, via []string) int {
 		return -1
 	}
 
-	pl.calling = append(pl.calling, callFrame{key: key, name: name, via: via})
+	pl.calling = append(pl.calling, callFrame{key: key, name: name, pos: p.pos, via: via})
 	defer func() { pl.calling = pl.calling[:len(pl.calling)-1] }()
 
 	via = append(slices.Clip(via), name)
