@@ -171,6 +171,9 @@ For each type it needs, kanna-di takes the first of these that has one:
    when that package is in your module or your go.work. The functions of the two packages count together, so that
    one in either never hides one in the other
 
+What the container embeds comes before any function, as embedding says what the container holds. A field added to a
+struct it embeds therefore serves the container from then on, in place of the function that made its type.
+
 Finding none stops generation, and so do two at the same level. The error traces the need back to the field:
 
 ```console
