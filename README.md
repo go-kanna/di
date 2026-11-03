@@ -60,6 +60,16 @@ each of the domain's interfaces, and how to open what the standard library provi
 ```go
 package main
 
+import (
+	"net/http"
+
+	"example.com/shop/handler"
+	"example.com/shop/mail"
+	_ "example.com/shop/postgres"
+	_ "example.com/shop/sendgrid"
+	"example.com/shop/user"
+)
+
 //go:generate go tool kanna-di
 
 // server serves the shop's HTTP API.
@@ -202,11 +212,14 @@ DSN — or choose one with `with=`.
 
 `di:"with=<ref>"` chooses the provider of the field's type, for the whole container:
 
-| `<ref>`                            | Names                                                                                  |
-|------------------------------------|----------------------------------------------------------------------------------------|
-| `NewUserRepository`                | a function in the container's package                                                  |
-| `postgres.NewUserRepository`       | a function in the package named postgres, in your module or the one declaring the type |
-| `infra/postgres.NewUserRepository` | the same, with as much of the import path as it takes to tell two such packages apart  |
+| `<ref>`                      | Names                                                                                 |
+|------------------------------|---------------------------------------------------------------------------------------|
+| `NewUserRepository`          | a function in the container's package                                                 |
+| `postgres.NewUserRepository` | a function of the package the container's file imports as postgres, as Go reads it in code |
+
+Go rejects a named import nothing uses, so a package that only a `with=` names is imported as `_`, and goes by its own
+name, as `postgres` and `sendgrid` do above. Nothing else is searched: a package the file does not import is an error,
+with what to import.
 
 The provider's result only has to be assignable to the type, which is how an interface gets its implementation. On a
 named field, `with=` also stores the value; on `_`, it only chooses, and a struct's fields then serve the container (see

@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kanna/internal/deps"
 	"github.com/go-kanna/internal/packages"
+	"github.com/go-kanna/internal/qualifier"
 	"github.com/go-kanna/internal/scan"
 )
 
@@ -29,9 +30,13 @@ func reportDeps(dir string, cfg config, patterns []string) (deps.Report, error) 
 			name = testOutputFile
 		}
 		r.Writes = append(r.Writes, filepath.Join(filepath.Dir(c.Pos.Filename), name))
+		imports := qualifier.Of(c.File, c.Named.Obj().Pkg())
 		for _, f := range c.fields {
-			if f.source == fromRef && f.ref.pkg != "" {
-				r.Refs = append(r.Refs, deps.Ref{Package: f.ref.pkg, Via: "with=" + f.ref.pkg + "." + f.ref.fn})
+			if f.source != fromRef || f.ref.pkg == "" {
+				continue
+			}
+			if pkg, err := imports.Lookup(f.ref.pkg); err == nil {
+				r.Refs = append(r.Refs, deps.Ref{Package: pkg.Path(), Via: "with=" + f.ref.String()})
 			}
 		}
 	}

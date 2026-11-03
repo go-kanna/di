@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kanna/internal/diag"
 	"github.com/go-kanna/internal/packages"
+	"github.com/go-kanna/internal/qualifier"
 	"github.com/go-kanna/internal/scan"
 )
 
@@ -20,10 +21,6 @@ type world struct {
 	// local reports whether a package is part of the user's module, the
 	// packages kanna-di looks in on its own.
 	local func(*types.Package) bool
-
-	// refs are the packages a with= may name besides the container's own:
-	// those of the user's module.
-	refs []*types.Package
 
 	// dir is the directory positions in hints are written relative to, as
 	// diag.Write writes those of the diagnostics.
@@ -206,11 +203,7 @@ func planOf(w *world, c container) (plan, []diag.Diag, []wait) {
 func (pl *planner) choose(f field) {
 	pl.chosen[typeKey(f.Type)] = nil
 
-	refs := pl.w.refs
-	if home := homeOf(f.Type); home != nil {
-		refs = append(slices.Clip(refs), home)
-	}
-	p, err := pl.w.x.resolve(f.ref, f.Type, pl.own, pl.c.test, refs)
+	p, err := pl.w.x.resolve(f.ref, f.Type, pl.own, pl.c.test, qualifier.Of(pl.c.File, pl.c.Named.Obj().Pkg()))
 	if err != nil {
 		d := fieldDiag(f.Field, err)
 		if e, ok := errors.AsType[refError](err); ok && e.hint != "" {

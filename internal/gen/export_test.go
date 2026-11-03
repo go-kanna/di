@@ -4,17 +4,20 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/token"
 	"go/types"
 	"maps"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/go-kanna/internal/diag"
 	"github.com/go-kanna/internal/output"
 	"github.com/go-kanna/internal/packages"
+	"github.com/go-kanna/internal/qualifier"
 	"github.com/go-kanna/internal/scan"
 )
 
@@ -131,9 +134,10 @@ func Lookup(pkg *packages.Package, expr string) ([]string, error) {
 }
 
 // Resolve is resolve of written, a with= ref, for a value of the type expr
-// names in pkg, with pkg, the packages it imports, and others as those a with=
-// may name. It spells the provider found as "<path>.<name>", and follows the
-// message of an error with its hint after "; ".
+// names in pkg, in a container declared in pkg's first file, which imports
+// others as _ besides what it imports. It spells the provider found as
+// "<path>.<name>", and follows the message of an error with its hint after
+// "; ".
 func Resolve(pkg *packages.Package, expr, written string, others ...*packages.Package) (string, error) {
 	t, err := evalType(pkg, expr)
 	if err != nil {
@@ -144,11 +148,22 @@ func Resolve(pkg *packages.Package, expr, written string, others ...*packages.Pa
 		return "", err
 	}
 
-	pkgs := append([]*types.Package{pkg.Types}, pkg.Types.Imports()...)
+	// A package the test loads stands for one of the module, which the file
+	// would import: a copy of the file and of what the package imports says
+	// so, leaving pkg as it is for the tests running beside.
+	file := *pkg.Syntax[0]
+	file.Imports = slices.Clone(file.Imports)
+	importer := types.NewPackage(pkg.Types.Path(), pkg.Types.Name())
+	imported := slices.Clone(pkg.Types.Imports())
 	for _, o := range others {
-		pkgs = append(pkgs, o.Types)
+		file.Imports = append(file.Imports, &ast.ImportSpec{
+			Name: ast.NewIdent("_"),
+			Path: &ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(o.Types.Path())},
+		})
+		imported = append(imported, o.Types)
 	}
-	p, err := newIndex(pkg.Fset).resolve(r, t, pkg.Types, false, pkgs)
+	importer.SetImports(imported)
+	p, err := newIndex(pkg.Fset).resolve(r, t, pkg.Types, false, qualifier.Of(&file, importer))
 	if e, ok := errors.AsType[refError](err); ok && e.hint != "" {
 		return "", fmt.Errorf("%s; %s", e.msg, e.hint)
 	} else if err != nil {
@@ -192,17 +207,12 @@ func Emit(fset *token.FileSet, pkgs []*packages.Package, module string, pkg *pac
 }
 
 // planAll plans the containers of pkgs, with the packages of module as the
-// user's module and those a with= may name.
+// user's module.
 func planAll(fset *token.FileSet, pkgs []*packages.Package, module string) ([]plan, []diag.Diag) {
 	local := func(p *types.Package) bool {
 		return p.Path() == module || strings.HasPrefix(p.Path(), module+"/")
 	}
 	w := &world{x: newIndex(fset), local: local, output: outputOf(pkgs)}
-	for _, p := range pkgs {
-		if local(p.Types) {
-			w.refs = append(w.refs, p.Types)
-		}
-	}
 
 	cs, ds := containers(fset, scan.Structs(pkgs), "", w.output)
 	w.containers = make(map[string]container, len(cs))

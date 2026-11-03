@@ -15,8 +15,9 @@ func TestDeps(t *testing.T) {
 	t.Parallel()
 
 	dir := writeModule(t, map[string]string{
-		"p/p.go": "package p\n\ntype I interface{ M() }\n\n//kanna:container\ntype C struct {\n" +
-			"\ti I `di:\"with=impl.New\"`\n}\n\nvar _ = NewC\n",
+		"impl/impl.go": "package impl\n\ntype T struct{}\n\nfunc (T) M() {}\n\nfunc New() T { return T{} }\n",
+		"p/p.go": "package p\n\nimport _ \"example.com/shop/impl\"\n\ntype I interface{ M() }\n\n" +
+			"//kanna:container\ntype C struct {\n\ti I `di:\"with=impl.New\"`\n}\n\nvar _ = NewC\n",
 		"p/p_test.go": "package p\n\n//kanna:container\ntype T struct{ c C }\n",
 	})
 
@@ -45,7 +46,7 @@ func TestDeps(t *testing.T) {
 	if want := []string{"example.com/shop/p.NewC", "example.com/shop/p.NewT"}; !slices.Equal(r.Declares, want) {
 		t.Errorf("Declares = %q, want %q", r.Declares, want)
 	}
-	want := []deps.Ref{{Package: "impl", Via: "with=impl.New"}}
+	want := []deps.Ref{{Package: "example.com/shop/impl", Via: "with=impl.New"}}
 	if !slices.Equal(r.Refs, want) {
 		t.Errorf("Refs = %+v, want %+v", r.Refs, want)
 	}

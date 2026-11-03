@@ -67,19 +67,6 @@ func run(dir string, cfg config, patterns []string) ([]output.Change, []diag.Dia
 		targets[p.PkgPath] = true
 	}
 
-	// A with= may name a package nothing loaded imports yet, as it is on the
-	// first run, before the generated code does. Its types have to come from
-	// the same load as the rest, or none of its types would be those the
-	// containers know, so the packages are loaded again together.
-	if extra := unloaded(set, module, dir); len(extra) > 0 {
-		if len(patterns) == 0 {
-			patterns = []string{"."}
-		}
-		if set, err = load(append(slices.Clip(patterns), extra...)); err != nil {
-			return nil, []diag.Diag{diag.Errorf(token.Position{}, "%v", err)}
-		}
-	}
-
 	changes, diags := generate(set, targets, module, dir)
 	if !diag.HasErrors(diags) && !slices.ContainsFunc(changes, func(c output.Change) bool { return !c.Remove }) {
 		// Nothing to stop for: a go:generate line left behind does no harm.
@@ -120,12 +107,6 @@ func generate(
 		}
 	}
 
-	// A package loaded for what a with= names comes with its tests, which a
-	// run loads no more once the output imports the package. So no error of
-	// them counts on the first run either.
-	others := testsOutside(set, targets)
-	set.Diags = slices.DeleteFunc(slices.Clone(set.Diags), others)
-
 	// Code calling a constructor does not compile before the run writes it,
 	// nor does code calling it as the run is about to change it. So a type
 	// error of a package loaded for the containers does not stop the run here:
@@ -150,11 +131,6 @@ func generate(
 		containers: make(map[string]container, len(cs)),
 		output:     written,
 	}
-	for _, p := range reachable(set.Packages) {
-		if w.local(p) {
-			w.refs = append(w.refs, p)
-		}
-	}
 	for _, c := range cs {
 		w.containers[typeKey(c.Named)] = c
 	}
@@ -167,28 +143,10 @@ func generate(
 	if diags = append(diags, ds...); diag.HasErrors(diags) {
 		return nil, diags
 	}
-	if rds := slices.DeleteFunc(packages.Recheck(set, changes), others); len(rds) > 0 {
+	if rds := packages.Recheck(set, changes); len(rds) > 0 {
 		return nil, slices.Concat(diags, rds, set.SetAsideWarnings())
 	}
 	return changes, diags
-}
-
-// testsOutside returns whether a diagnostic is about a test file of a package
-// of set that targets does not name: one loaded for what a with= names, or
-// the external test package of one.
-func testsOutside(set packages.Set, targets map[string]bool) func(diag.Diag) bool {
-	files := make(map[string]bool)
-	for _, p := range set.Packages {
-		if targets[p.PkgPath] {
-			continue
-		}
-		for _, f := range p.CompiledGoFiles {
-			if strings.HasSuffix(f, "_test.go") {
-				files[f] = true
-			}
-		}
-	}
-	return func(d diag.Diag) bool { return files[d.Pos.Filename] }
 }
 
 // outputOf returns the files of roots that an earlier run wrote, by absolute
@@ -282,64 +240,4 @@ func constructors(cs []container) map[string]bool {
 		}
 	}
 	return names
-}
-
-// unloaded returns the packages of the module that a with= of the containers
-// of set may name, and that are not among the packages loaded with set, nor
-// imported by them. dir is where the run works.
-func unloaded(set packages.Set, module map[string]string, dir string) []string {
-	cs, _ := containers(set.Fset, scan.Structs(set.Packages), dir, outputOf(set.Packages))
-	loaded := make(map[string]bool)
-	for _, p := range reachable(set.Packages) {
-		loaded[p.Path()] = true
-	}
-
-	var extra []string
-	for _, c := range cs {
-		for _, f := range c.fields {
-			if f.source != fromRef || f.ref.pkg == "" {
-				continue
-			}
-			for path, name := range module {
-				if qualifies(f.ref.pkg, path, name) && !loaded[path] && !slices.Contains(extra, path) {
-					extra = append(extra, path)
-				}
-			}
-		}
-	}
-	slices.Sort(extra)
-	return extra
-}
-
-// reachable returns the packages of pkgs and every package they import, one
-// for each import path, preferring those of pkgs, which for a package loaded
-// with its tests holds the functions of its test files too.
-func reachable(pkgs []*packages.Package) []*types.Package {
-	seen := make(map[string]bool)
-	var out []*types.Package
-	var walk func(p *types.Package)
-	walk = func(p *types.Package) {
-		if p == nil || seen[p.Path()] {
-			return
-		}
-		seen[p.Path()] = true
-		out = append(out, p)
-		for _, imp := range p.Imports() {
-			walk(imp)
-		}
-	}
-	for _, p := range pkgs {
-		if p.Types != nil && !seen[p.PkgPath] {
-			seen[p.PkgPath] = true
-			out = append(out, p.Types)
-		}
-	}
-	for _, p := range pkgs {
-		if p.Types != nil {
-			for _, imp := range p.Types.Imports() {
-				walk(imp)
-			}
-		}
-	}
-	return out
 }
