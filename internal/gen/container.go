@@ -12,7 +12,6 @@ import (
 	"github.com/go-kanna/internal/diag"
 	"github.com/go-kanna/internal/directive"
 	"github.com/go-kanna/internal/scan"
-	"github.com/go-kanna/internal/suggest"
 )
 
 // directiveKey spells the directive //kanna:container.
@@ -30,7 +29,7 @@ const (
 )
 
 // options are what a //kanna:container line can say.
-var options = []string{"name", "returns", "must"}
+var options = directive.Spec{Words: []string{"must"}, Keys: []string{"name", "returns"}}
 
 // container is a struct marked //kanna:container.
 type container struct {
@@ -138,55 +137,28 @@ func containerOf(fset *token.FileSet, s scan.Struct, d directive.Directive) (con
 // parseOptions reads the options d gives into c, setting the defaults for those
 // it leaves out.
 func (c *container) parseOptions(fset *token.FileSet, d directive.Directive) []diag.Diag {
-	var (
-		diags  []diag.Diag
-		must   bool
-		given  = make(map[string]bool)
-		errorf = func(format string, args ...any) {
-			diags = append(diags, diag.Errorf(d.Pos, format, args...))
-		}
-	)
-	for opt := range strings.FieldsSeq(d.Args) {
-		key, value, hasValue := strings.Cut(opt, "=")
-		if given[key] {
-			errorf("%s is given twice", key)
-			continue
-		}
-		given[key] = true
-
-		switch key {
+	args, diags := d.Parse(options)
+	errorf := func(format string, args ...any) {
+		diags = append(diags, diag.Errorf(d.Pos, format, args...))
+	}
+	var must bool
+	for _, a := range args {
+		switch a.Name {
 		case "name":
-			switch {
-			case value == "":
-				errorf("name= needs the constructor's name")
-			case value == "_" || !token.IsIdentifier(value):
-				errorf("name=%s: %s is not a Go identifier", value, value)
-			default:
-				c.ctor = value
-			}
-		case "returns":
-			if value == "" {
-				errorf("returns= needs the type the constructor returns")
+			if a.Value == "_" || !token.IsIdentifier(a.Value) {
+				errorf("name=%s: %s is not a Go identifier", a.Value, a.Value)
 				continue
 			}
-			t, err := c.resolveReturns(fset, value)
+			c.ctor = a.Value
+		case "returns":
+			t, err := c.resolveReturns(fset, a.Value)
 			if err != nil {
-				errorf("returns=%s: %v", value, err)
+				errorf("returns=%s: %v", a.Value, err)
 				continue
 			}
 			c.returns = t
 		case "must":
-			if hasValue {
-				errorf("must takes no value")
-				continue
-			}
 			must = true
-		default:
-			unknown := diag.Errorf(d.Pos, "unknown option %q of //kanna:%s", opt, directiveKey)
-			if s, ok := suggest.Closest(key, options); ok {
-				unknown = unknown.WithHints(fmt.Sprintf("did you mean %q?", s))
-			}
-			diags = append(diags, unknown)
 		}
 	}
 
