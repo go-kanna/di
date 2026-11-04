@@ -75,14 +75,13 @@ func newDeps() *Deps { return &Deps{DB: newDB()} }
 //kanna:container
 type empty struct{}
 
-// configured takes a config.Config, whose parameter is named after its type,
-// config, and gives way to the import of package config. A context.Context is
-// ctx instead.
+// configured takes its fields as parameters named after them: config gives way
+// to the import of package config.
 //
 //kanna:container
 type configured struct {
-	cfg config.Config   `di:"arg"`
-	ctx context.Context `di:"arg"`
+	config config.Config   `di:"arg"`
+	ctx    context.Context `di:"arg"`
 }
 
 var _ = users

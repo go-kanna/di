@@ -68,7 +68,7 @@ func newEmpty() *empty {
 // newConfigured initializes dependencies and constructs configured.
 func newConfigured(config2 config.Config, ctx context.Context) *configured {
 	return &configured{
-		cfg: config2,
-		ctx: ctx,
+		config: config2,
+		ctx:    ctx,
 	}
 }

@@ -148,6 +148,8 @@ func TestContainers_ParamNames(t *testing.T) {
 	got, diags := containers(t, map[string]string{
 		"x.go": `package test
 
+import "context"
+
 type (
 	URLPath    string
 	HTTPClient struct{}
@@ -164,14 +166,18 @@ type c struct {
 
 //kanna:container
 type d struct {
-	_ Alias ` + "`di:\"arg\"`" + `
+	_     Alias           ` + "`di:\"arg\"`" + `
+	_     context.Context ` + "`di:\"arg\"`" + `
+	URL   URLPath         ` + "`di:\"arg\"`" + `
+	todos ID              ` + "`di:\"arg\"`" + `
+	base  *HTTPClient     ` + "`di:\"arg=client\"`" + `
 }
 `,
 	})
 
 	want := [][]string{
 		{"_: arg=urlPath", "_: arg=httpClient", "_: arg=id"},
-		{"_: arg=alias"},
+		{"_: arg=alias", "_: arg=ctx", "URL: arg=url", "todos: arg=todos", "base: arg=client"},
 	}
 	if len(got) != len(want) || len(diags) > 0 {
 		t.Fatalf("containers = %+v, diagnostics %q", got, diags)
@@ -314,7 +320,7 @@ func TestContainers_Diagnostics(t *testing.T) {
 		{
 			name: "chosen twice",
 			src:  "\n//kanna:container\ntype c struct {\n\t_ Reader `di:\"with=a\"`\n\tr Reader `di:\"with=b\"`\n}\n",
-			want: "Reader is chosen twice (line 6) (field r)",
+			want: "Reader is chosen twice (line 6) (field r)\n  a container hands out one value of a type, to all that need one",
 		},
 		{
 			name: "taken and chosen",

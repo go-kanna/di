@@ -21,6 +21,11 @@ const directiveKey = "container"
 // own, which nothing hands out by type.
 const ownTypeHint = "declare a type of its own for it, such as type DSN string"
 
+// oneValueHint says what to do for two values of one type, which a container
+// takes or chooses once.
+const oneValueHint = "a container hands out one value of a type, to all that need one; " +
+	"for two, give each a type of its own, such as type ReplicaDB struct{ *sql.DB }"
+
 // The files generated next to the containers: one for the containers of a
 // package, one for those of its tests.
 const (
@@ -74,12 +79,15 @@ func (f field) zero() bool {
 }
 
 // paramName is what the constructor calls the parameter of a fromArg field:
-// the name its tag gives, or one made from its type, or "" when the type has
-// no name to make one from. A context.Context is ctx, as Go code calls one.
+// the name its tag gives, or the field's own name, or for a blank field one
+// made from its type, which is "" when the type has no name to make one from.
+// A blank context.Context is ctx, as Go code calls one.
 func (f field) paramName() string {
 	switch {
 	case f.param != "":
 		return f.param
+	case !f.blank():
+		return lowerFirst(f.Name)
 	case isNamed(f.Type, "context", "Context"):
 		return "ctx"
 	}
@@ -271,22 +279,28 @@ func conflicts(s scan.Struct, fields []field) []diag.Diag {
 			continue
 		}
 		for _, prev := range fields[:i] {
-			var err error
+			var (
+				err   error
+				hints []string
+			)
 			sameType := types.Identical(f.Type, prev.Type)
 			switch {
 			case f.source == fromArg && prev.source == fromArg && sameType:
 				err = fmt.Errorf("%s is taken twice (line %d)", typeString(f.Type, pkg), prev.Pos.Line)
+				hints = []string{oneValueHint}
 			case f.source == fromArg && prev.source == fromArg && f.paramName() == prev.paramName():
 				err = fmt.Errorf(`two parameters are named %s (line %d); name one with di:"arg=<name>"`,
 					f.paramName(), prev.Pos.Line)
 			case f.source == fromRef && prev.source == fromRef && sameType:
 				err = fmt.Errorf("%s is chosen twice (line %d)", typeString(f.Type, pkg), prev.Pos.Line)
+				hints = []string{oneValueHint}
 			case f.source != prev.source && (prev.source == fromArg || prev.source == fromRef) && sameType:
 				err = fmt.Errorf("%s is both taken as an argument and chosen with with= (line %d)",
 					typeString(f.Type, pkg), prev.Pos.Line)
+				hints = []string{oneValueHint}
 			}
 			if err != nil {
-				diags = append(diags, fieldDiag(f.Field, err))
+				diags = append(diags, fieldDiag(f.Field, err).WithHints(hints...))
 				break
 			}
 		}
@@ -357,15 +371,15 @@ func mustOf(ctor string) string {
 	return "must" + upperFirst(ctor)
 }
 
-// nameOf makes a name for a value of type t from the name of its type, as a
-// person would: server for *Server, db for *sql.DB, httpClient for
-// *HTTPClient. A type without a name, such as []string, gives "".
 // isNamed reports whether t is the type name declared in the package at path.
 func isNamed(t types.Type, path, name string) bool {
 	n, ok := types.Unalias(t).(*types.Named)
 	return ok && n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == path && n.Obj().Name() == name
 }
 
+// nameOf makes a name for a value of type t from the name of its type, as a
+// person would: server for *Server, db for *sql.DB, httpClient for
+// *HTTPClient. A type without a name, such as []string, gives "".
 func nameOf(t types.Type) string {
 	if p, ok := t.(*types.Pointer); ok {
 		t = p.Elem()
