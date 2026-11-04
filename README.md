@@ -317,11 +317,14 @@ serves whatever else in the container needs its type, wherever its field is decl
 apart without restating it (see [Tests](#tests)). A container of another package is built by its
 constructor instead, since its unexported fields cannot be set from here, and so is a named field of a container type.
 
+The constructor is named after the struct: `NewServer` for `Server`, and `newServer` for `server`, so that it is
+exported exactly when the struct is. A function of another name, such as one loading the configuration first, is
+written by hand and calls it.
+
 The directive takes options:
 
 | Directive                          | Effect                                                                                                                      |
 |------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
-| `//kanna:container name=<ident>`   | name the constructor (default: `New` and the struct's name, or `new` and it for an unexported struct)                       |
 | `//kanna:container returns=<type>` | declare what the constructor returns: the struct, to return it by value, or an interface it implements (default: a pointer) |
 | `//kanna:container must`           | also write `MustNewServer` (`mustNewServer` for `newServer`), which panics instead of returning an error                    |
 

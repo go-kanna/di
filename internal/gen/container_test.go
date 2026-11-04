@@ -53,7 +53,7 @@ type Server struct {
 	Users *Users
 }
 
-//kanna:container name=build must returns=Worker
+//kanna:container must returns=Worker
 type Worker struct{ Users *Users }
 
 //kanna:container returns=fmt.Stringer
@@ -98,7 +98,7 @@ func newServer() *server { return nil }
 			Fields: []string{"(embedded) Deps: arg=deps", "Users: type"},
 		},
 		{
-			Name: "Worker", Ctor: "build", Must: "mustBuild", Returns: "Worker",
+			Name: "Worker", Ctor: "NewWorker", Must: "MustNewWorker", Returns: "Worker",
 			Fields: []string{"Users: type"},
 		},
 		{
@@ -206,17 +206,15 @@ func TestContainers_Diagnostics(t *testing.T) {
 		},
 		{
 			name: "unknown option",
-			src:  "\n//kanna:container nme=b\ntype c struct{}\n",
-			want: "x.go:4:1: error: //kanna:container takes must, name=…, or returns=…, not \"nme=b\"\n  did you mean \"name\"?",
+			src:  "\n//kanna:container retrns=b\ntype c struct{}\n",
+			want: "x.go:4:1: error: //kanna:container takes must or returns=…, not \"retrns=b\"\n  did you mean \"returns\"?",
 		},
-		{name: "name twice", src: "\n//kanna:container name=a name=b\ntype c struct{}\n", want: "takes name once"},
-		{name: "name empty", src: "\n//kanna:container name=\ntype c struct{}\n", want: "takes a value for name"},
 		{
-			name: "name not an identifier",
-			src:  "\n//kanna:container name=1x\ntype c struct{}\n",
-			want: "name=1x: 1x is not a Go identifier",
+			name: "a name",
+			src:  "\n//kanna:container name=build must\ntype c struct{}\n",
+			want: "x.go:4:1: error: //kanna:container takes no name=: the constructor of c is newC, after its name\n" +
+				"  for one of another name, write it by hand, calling newC",
 		},
-		{name: "name blank", src: "\n//kanna:container name=_\ntype c struct{}\n", want: "_ is not a Go identifier"},
 		{name: "must with a value", src: "\n//kanna:container must=true\ntype c struct{}\n", want: "takes must alone"},
 		{name: "must twice", src: "\n//kanna:container must must\ntype c struct{}\n", want: "takes must once"},
 		{name: "returns empty", src: "\n//kanna:container returns=\ntype c struct{}\n", want: "takes a value for returns"},
@@ -341,17 +339,12 @@ func TestContainers_Diagnostics(t *testing.T) {
 			name: "constructor declared by hand",
 			src:  "\n//kanna:container\ntype c struct{}\n\nfunc newC() *c { return nil }\n",
 			want: "x.go:5:6: error: newC, the constructor of c, is already declared\n" +
-				"  at x.go:7:6; rename one, or give the constructor a name with name=",
+				"  at x.go:7:6; rename the struct or the declaration",
 		},
 		{
 			name: "must variant declared by hand",
 			src:  "\n//kanna:container must\ntype c struct{}\n\nvar mustNewC = 1\n",
 			want: "mustNewC, the constructor of c, is already declared",
-		},
-		{
-			name: "one constructor for two containers",
-			src:  "\n//kanna:container name=build\ntype c struct{}\n\n//kanna:container name=build\ntype d struct{}\n",
-			want: "x.go:8:6: error: build would be the constructor of both d and c (line 5)",
 		},
 	}
 
@@ -372,7 +365,7 @@ func TestContainers_LeavesOutTheContainersInError(t *testing.T) {
 	t.Parallel()
 
 	got, diags := containers(t, map[string]string{
-		"x.go": "package test\n\n//kanna:container name=1x\ntype c struct{}\n\n//kanna:container\ntype d struct{}\n",
+		"x.go": "package test\n\n//kanna:container returns=int\ntype c struct{}\n\n//kanna:container\ntype d struct{}\n",
 	})
 	if len(got) != 1 || got[0].Name != "d" || len(diags) != 1 {
 		t.Errorf("containers = %+v, diagnostics %q; want d alone and one diagnostic", got, diags)

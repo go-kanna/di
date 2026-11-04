@@ -34,7 +34,7 @@ const (
 )
 
 // options are what a //kanna:container line can say.
-var options = directive.Spec{Words: []string{"must"}, Keys: []string{"name", "returns"}}
+var options = directive.Spec{Words: []string{"must"}, Keys: []string{"returns"}}
 
 // container is a struct marked //kanna:container.
 type container struct {
@@ -145,19 +145,22 @@ func containerOf(fset *token.FileSet, s scan.Struct, d directive.Directive) (con
 // parseOptions reads the options d gives into c, setting the defaults for those
 // it leaves out.
 func (c *container) parseOptions(fset *token.FileSet, d directive.Directive) []diag.Diag {
-	args, diags := d.Parse(options)
+	c.ctor = defaultCtor(c.Name)
+	var diags []diag.Diag
+	d, named := withoutName(d)
+	if named {
+		diags = append(diags, diag.Errorf(d.Pos, "//kanna:%s takes no name=: the constructor of %s is %s, after its name",
+			directiveKey, c.Name, c.ctor).
+			WithHints("for one of another name, write it by hand, calling "+c.ctor))
+	}
+	args, ds := d.Parse(options)
+	diags = append(diags, ds...)
 	errorf := func(format string, args ...any) {
 		diags = append(diags, diag.Errorf(d.Pos, format, args...))
 	}
 	var must bool
 	for _, a := range args {
 		switch a.Name {
-		case "name":
-			if a.Value == "_" || !token.IsIdentifier(a.Value) {
-				errorf("name=%s: %s is not a Go identifier", a.Value, a.Value)
-				continue
-			}
-			c.ctor = a.Value
 		case "returns":
 			t, err := c.resolveReturns(fset, a.Value)
 			if err != nil {
@@ -170,9 +173,6 @@ func (c *container) parseOptions(fset *token.FileSet, d directive.Directive) []d
 		}
 	}
 
-	if c.ctor == "" {
-		c.ctor = defaultCtor(c.Name)
-	}
 	if must {
 		c.must = mustOf(c.ctor)
 	}
@@ -180,6 +180,24 @@ func (c *container) parseOptions(fset *token.FileSet, d directive.Directive) []d
 		c.returns = types.NewPointer(c.Named)
 	}
 	return diags
+}
+
+// withoutName returns d without its name= arguments, and whether it had any,
+// for them to be told apart from a misspelled option.
+func withoutName(d directive.Directive) (directive.Directive, bool) {
+	var (
+		kept  []string
+		named bool
+	)
+	for item := range strings.FieldsSeq(d.Args) {
+		if key, _, _ := strings.Cut(item, "="); key == "name" {
+			named = true
+			continue
+		}
+		kept = append(kept, item)
+	}
+	d.Args = strings.Join(kept, " ")
+	return d, named
 }
 
 // resolveReturns reads the type expr names, in the scope of the file declaring
@@ -308,16 +326,15 @@ func conflicts(s scan.Struct, fields []field) []diag.Diag {
 	return diags
 }
 
-// clash adds to diags a constructor name another one of its package takes, or
-// one the package already declares, and leaves out the containers it applies
-// to. What an earlier run generated, in the files of output, does not count,
-// since it is about to be replaced. Positions in hints are written relative to
-// dir, as diag.Write writes those of the diagnostics.
+// clash adds to diags a constructor name the package already declares, and
+// leaves out the containers it applies to. Two containers cannot take one, as
+// each is named after its struct. What an earlier run generated, in the files
+// of output, does not count, since it is about to be replaced. Positions in
+// hints are written relative to dir, as diag.Write writes those of the
+// diagnostics.
 func clash(
 	fset *token.FileSet, cs []container, diags []diag.Diag, dir string, output map[string]bool,
 ) ([]container, []diag.Diag) {
-	type key struct{ pkg, name string }
-	taken := make(map[key]container)
 	var kept []container
 	for _, c := range cs {
 		ok := true
@@ -325,15 +342,6 @@ func clash(
 			if name == "" {
 				continue
 			}
-			k := key{c.PkgPath, name}
-			if other, dup := taken[k]; dup {
-				diags = append(diags, diag.Errorf(c.Pos, "%s would be the constructor of both %s and %s (line %d)",
-					name, c.Name, other.Name, other.Pos.Line))
-				ok = false
-				continue
-			}
-			taken[k] = c
-
 			obj := c.Named.Obj().Pkg().Scope().Lookup(name)
 			if obj == nil {
 				continue
@@ -341,7 +349,7 @@ func clash(
 			if pos := fset.Position(obj.Pos()); !output[pos.Filename] {
 				pos.Filename = diag.ShortPath(dir, pos.Filename)
 				diags = append(diags, diag.Errorf(c.Pos, "%s, the constructor of %s, is already declared", name, c.Name).
-					WithHints(fmt.Sprintf("at %s; rename one, or give the constructor a name with name=", pos)))
+					WithHints(fmt.Sprintf("at %s; rename the struct or the declaration", pos)))
 				ok = false
 			}
 		}
