@@ -182,10 +182,14 @@ type server struct {
 `
 	tests := []struct {
 		name, edit, with string
+
+		// aside says the output no longer compiles with the edit, and is set
+		// aside.
+		aside bool
 	}{
 		{name: "the directive goes", edit: "//kanna:container must\n"},
 		{name: "the must variant goes", edit: "//kanna:container must", with: "//kanna:container"},
-		{name: "the constructor renamed", edit: "//kanna:container must", with: "//kanna:container must name=newApp"},
+		{name: "the struct renamed", edit: "type server struct", with: "type app struct", aside: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -206,6 +210,10 @@ type server struct {
 				t.Fatal(err)
 			}
 			want := "./main.go:3:18: error: undefined: mustNewServer\n"
+			if tt.aside {
+				want += "./di_gen.go: warning: set aside because it no longer compiles; " +
+					"it is regenerated once the errors above are fixed\n"
+			}
 			if code, _, stderr := execute(t, app); code != cli.ExitFailure || stderr != want {
 				t.Errorf("exit %d, stderr:\n%s\nwant %d and\n%s", code, stderr, cli.ExitFailure, want)
 			}
