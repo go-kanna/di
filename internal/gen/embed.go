@@ -106,30 +106,44 @@ func (pl *planner) collect(c container, top bool, path []string) {
 // place, which path names. top says it is the one being planned, whose fields
 // diagnostics are reported at; those of a container built in place go to the
 // field embedding it.
+//
+// The containers built in place come first, so that each serves its type to
+// the other fields whatever their order, as what a container embeds comes
+// before any function.
 func (pl *planner) fill(c container, owner string, top bool, path []string) []assign {
-	var fields []assign
-	for _, f := range c.fields {
-		if f.blank() || f.zero() {
-			continue
-		}
-		if top {
-			pl.root = f.Field
-		}
-		via := owner + "." + f.Name
-
-		var s int
-		if inner, ok := pl.inlined(f); ok {
-			if slices.Contains(path, inner.Name) {
-				continue // reported by collect
+	steps := make([]int, len(c.fields))
+	for _, inPlace := range []bool{true, false} {
+		for i, f := range c.fields {
+			inner, ok := pl.inlined(f)
+			if ok != inPlace {
+				continue
 			}
-			s = pl.build(inner, f, via, append(slices.Clip(path), f.Name))
-		} else if e := pl.embedOf(via); e != nil {
-			s = pl.embedStep(e)
-		} else {
-			s = pl.need(f.Type, []string{via})
+			steps[i] = -1
+			if f.blank() || f.zero() {
+				continue
+			}
+			if top {
+				pl.root = f.Field
+			}
+			via := owner + "." + f.Name
+
+			switch e := pl.embedOf(via); {
+			case ok && slices.Contains(path, inner.Name):
+				// reported by collect
+			case ok:
+				steps[i] = pl.build(inner, f, via, append(slices.Clip(path), f.Name))
+			case e != nil:
+				steps[i] = pl.embedStep(e)
+			default:
+				steps[i] = pl.need(f.Type, []string{via})
+			}
 		}
-		if s >= 0 {
-			fields = append(fields, assign{field: f.Name, step: s})
+	}
+
+	var fields []assign
+	for i, f := range c.fields {
+		if steps[i] >= 0 {
+			fields = append(fields, assign{field: f.Name, step: steps[i]})
 		}
 	}
 	return fields

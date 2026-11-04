@@ -59,6 +59,15 @@ type shared struct {
 	again *base
 }
 
+// sharedLater declares the field first, and shares base all the same.
+//
+//kanna:container
+type sharedLater struct {
+	again *base
+
+	*base
+}
+
 // drawn draws its users from a *Deps it finds, newDeps, but does not keep.
 //
 //kanna:container
