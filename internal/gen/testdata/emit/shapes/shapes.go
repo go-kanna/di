@@ -68,6 +68,19 @@ type sharedLater struct {
 	*base
 }
 
+// Clock has no fields, so newTicker gets its zero value.
+type (
+	Clock  struct{}
+	Ticker struct{}
+)
+
+func newTicker(Clock) *Ticker { return &Ticker{} }
+
+//kanna:container
+type ticking struct {
+	ticker *Ticker
+}
+
 // drawn draws its users from a *Deps it finds, newDeps, but does not keep.
 //
 //kanna:container

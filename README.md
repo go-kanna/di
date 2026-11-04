@@ -177,7 +177,9 @@ For each type it needs, kanna-di takes the first of these that has one:
 2. the provider the container chooses for the type (`di:"with=..."`)
 3. what the container embeds: an exported field of a struct it embeds or declares as `_`, or the `with=` of a
    container it builds in place (see [Containers](#containers))
-4. a function in the container's package, exported or not, or an exported function in the package declaring the type,
+4. the zero value, for a struct type without fields, not a pointer to one: the only value it has, which no function
+   needs to make, so that `newTicker(Clock{})` takes it as a field of the container does (see [Containers](#containers))
+5. a function in the container's package, exported or not, or an exported function in the package declaring the type,
    when that package is in your module, the one whose go.mod is above the container. The functions of the two
    packages count together, so that one in either never hides one in the other
 

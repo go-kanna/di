@@ -63,6 +63,15 @@ func newSharedLater() *sharedLater {
 	}
 }
 
+// newTicking initializes dependencies and constructs ticking.
+func newTicking() *ticking {
+	ticker := newTicker(Clock{})
+
+	return &ticking{
+		ticker: ticker,
+	}
+}
+
 // newDrawn initializes dependencies and constructs drawn.
 func newDrawn() *drawn {
 	deps := newDeps()

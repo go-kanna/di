@@ -279,9 +279,14 @@ func describe(p plan) []string {
 		return c.Name + "{" + strings.Join(fields, ", ") + "}"
 	}
 	for i, s := range p.steps {
-		if s.kind == paramStep {
+		switch s.kind {
+		case paramStep:
 			names[i] = strings.Fields(params[s.param])[0]
 			continue
+		case zeroStep:
+			names[i] = types.TypeString(s.typ, types.RelativeTo(own)) + "{}"
+			continue
+		case callStep, fieldStep, literalStep:
 		}
 		names[i] = unique(s.name)
 		line := names[i] + " := "
@@ -309,7 +314,7 @@ func describe(p plan) []string {
 				line += "&"
 			}
 			line += literal(s.lit.c, s.lit.fields)
-		case paramStep:
+		case paramStep, zeroStep:
 		}
 		lines = append(lines, line)
 	}

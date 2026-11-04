@@ -161,6 +161,35 @@ type c struct {
 	}
 }
 
+func TestPlans_PassTheZeroOfAStructWithoutFields(t *testing.T) {
+	t.Parallel()
+
+	got, diags := plans(t, map[string]string{"x.go": `package test
+
+type (
+	Clock struct{}
+	Users struct{}
+)
+
+func newClock() Clock { return Clock{} }
+
+func newUsers(Clock) *Users { return nil }
+
+//kanna:container
+type c struct {
+	clock Clock
+	users *Users
+}
+`})
+
+	// Clock has one value, which the field and newUsers both get without
+	// newClock.
+	want := []string{"newC() *c", "users := newUsers(Clock{})", "c{users: users}"}
+	if !slices.Equal(got["c"], want) || len(diags) > 0 {
+		t.Errorf("plan =\n%s\nwant\n%s\ndiagnostics %q", strings.Join(got["c"], "\n"), strings.Join(want, "\n"), diags)
+	}
+}
+
 func TestPlans_Diagnostics(t *testing.T) {
 	t.Parallel()
 
