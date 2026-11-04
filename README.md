@@ -267,8 +267,8 @@ What the container takes or chooses but nothing needs draws a warning:
 
 An embedded struct, or pointer to one, is resolved — or, tagged `di:"arg"`, taken as a parameter — and stored like any
 field, and its exported fields, promoted ones included, serve the rest of the container; they cannot serve what the
-struct itself is built from. A shallower field hides a deeper one of the same type, as in Go; two at the same depth are
-an error when the type is needed.
+struct itself is built from. A shallower field hides a deeper one of the same type, as Go hides a deeper field of the
+same name; two at the same depth are an error when the type is needed.
 
 ```go
 //kanna:container
