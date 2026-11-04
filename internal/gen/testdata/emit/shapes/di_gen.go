@@ -48,6 +48,21 @@ func newShared() *shared {
 	}
 }
 
+// newSharedLater initializes dependencies and constructs sharedLater.
+func newSharedLater() *sharedLater {
+	db := newDB()
+	type2 := newType()
+	users2 := newUsers(db, type2)
+	base2 := &base{
+		users: users2,
+	}
+
+	return &sharedLater{
+		again: base2,
+		base:  base2,
+	}
+}
+
 // newDrawn initializes dependencies and constructs drawn.
 func newDrawn() *drawn {
 	deps := newDeps()

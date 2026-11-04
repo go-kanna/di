@@ -309,8 +309,9 @@ func NewDeleteTodo() (*DeleteTodo, func(), error) {
 
 A container of the same package embedded without a tag — a struct marked `//kanna:container` itself — is not built by
 its own constructor but here, field by field, as part of this one. What it takes as arguments, this constructor takes
-too, unless it takes the type itself; its `with=` serve this container after this container's own. That is how a test
-takes a server apart without restating it (see [Tests](#tests)). A container of another package is built by its
+too, unless it takes the type itself; its `with=` serve this container after this container's own. The value built
+serves whatever else in the container needs its type, wherever its field is declared. That is how a test takes a server
+apart without restating it (see [Tests](#tests)). A container of another package is built by its
 constructor instead, since its unexported fields cannot be set from here, and so is a named field of a container type.
 
 The directive takes options:
