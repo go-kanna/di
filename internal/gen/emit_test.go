@@ -26,6 +26,7 @@ func TestEmit(t *testing.T) {
 	}{
 		{dir: "testdata/emit/run"},
 		{dir: "testdata/emit/shapes"},
+		{dir: "testdata/emit/spelled"},
 		// The example of the README.
 		{dir: "testdata/shop/app", patterns: shop},
 	}

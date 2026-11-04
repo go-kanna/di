@@ -60,6 +60,9 @@ type plan struct {
 type param struct {
 	name string
 	typ  types.Type
+	// spelled reports a name the tag spells out, di:"arg=<name>", rather than
+	// one made from the type.
+	spelled bool
 }
 
 // stepKind says how a step makes its value.

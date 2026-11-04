@@ -4,7 +4,11 @@
 // declares, and a parameter named as the package its type comes from.
 package shapes
 
-import "github.com/go-kanna/di/internal/gen/testdata/emit/shapes/config"
+import (
+	"context"
+
+	"github.com/go-kanna/di/internal/gen/testdata/emit/shapes/config"
+)
 
 //go:generate go tool kanna-di
 
@@ -71,12 +75,14 @@ func newDeps() *Deps { return &Deps{DB: newDB()} }
 //kanna:container
 type empty struct{}
 
-// configured takes a config.Config, whose parameter is named config after
-// its type: the import gives way to it.
+// configured takes a config.Config, whose parameter is named after its type,
+// config, and gives way to the import of package config. A context.Context is
+// ctx instead.
 //
 //kanna:container
 type configured struct {
-	cfg config.Config `di:"arg"`
+	cfg config.Config   `di:"arg"`
+	ctx context.Context `di:"arg"`
 }
 
 var _ = users

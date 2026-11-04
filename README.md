@@ -246,8 +246,10 @@ named field, `with=` also stores the value; on `_`, it only chooses, and a struc
 A named or embedded field without a tag whose type is a struct with no fields, not a pointer to one, is left at its zero
 value, the only value it has: a gRPC server embedding `todov1.UnimplementedTodoServiceServer` needs no provider for it.
 
-A parameter keeps its name, and an import the generated file needs under that name is renamed instead; a name spelled
-out that the package declares at the top level, or that Go does, is an error.
+A parameter named after its type gives way to the imports, which keep the names of their packages, as code written by
+hand does: a `config.Config` is `config2 config.Config`. A `context.Context` is `ctx`, as Go code calls one. A name
+spelled out keeps itself, and an import the generated file needs under it is renamed instead; a name spelled out that
+the package declares at the top level, or that Go does, is an error.
 
 What the container takes or chooses but nothing needs draws a warning:
 
