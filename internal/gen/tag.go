@@ -51,9 +51,8 @@ type tag struct {
 // ref names a provider, as written after with=.
 type ref struct {
 	// pkg is "" for a function of the container's package. Otherwise it is
-	// as much of the end of an import path as it takes to tell the package
-	// apart: its name, such as "postgres", or "infra/postgres", or the full
-	// path.
+	// the name the container's file imports the package as, such as
+	// "postgres"; a path is read, to be refused with what to write instead.
 	pkg string
 
 	// fn is the function's name.
