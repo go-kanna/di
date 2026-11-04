@@ -108,6 +108,20 @@ func TestCommand_GeneratesTheConstructor(t *testing.T) {
 	}
 }
 
+// A //kanna:container a blank line keeps from its struct marks nothing, which
+// is told at the line.
+func TestCommand_WarnsOfALooseDirective(t *testing.T) {
+	t.Parallel()
+
+	dir := writeModule(t, with(shop, map[string]string{
+		"app/server.go": server + "\n//kanna:container\n\ntype worker struct{}\n",
+	}))
+	_, _, stderr := execute(t, filepath.Join(dir, "app"))
+	if want := "//kanna:container is not attached to a declaration, so nothing reads it"; !strings.Contains(stderr, want) {
+		t.Errorf("stderr = %q, want it to contain %q", stderr, want)
+	}
+}
+
 func TestCommand_FindsProvidersOfAPackageReachedThroughAnother(t *testing.T) {
 	t.Parallel()
 
