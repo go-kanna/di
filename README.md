@@ -318,7 +318,8 @@ The directive takes options:
 | `//kanna:container must`           | also write `MustNewServer` (`mustNewServer` for `newServer`), which panics instead of returning an error                    |
 
 A generic struct cannot be a container: its constructor would have no way to choose the type arguments. A struct with
-`di` tags but no directive gets a warning, as does a misspelled directive.
+`di` tags but no directive gets a warning, as does a misspelled directive, and one a blank line keeps from its struct,
+which is then no doc comment of it.
 
 Write the directive against the comment marker. Go only treats `//kanna:…` as a directive when the two are adjacent;
 with a space, `// kanna:container` stays part of the doc comment and shows up in `go doc` and on pkg.go.dev. kanna-di

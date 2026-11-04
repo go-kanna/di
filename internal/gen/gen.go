@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kanna/internal/cli"
 	"github.com/go-kanna/internal/diag"
+	"github.com/go-kanna/internal/directive"
 	"github.com/go-kanna/internal/output"
 	"github.com/go-kanna/internal/packages"
 	"github.com/go-kanna/internal/scan"
@@ -118,6 +119,9 @@ func generate(
 
 	written := outputOf(roots)
 	cs, diags := containers(set.Fset, scan.Structs(roots), dir, written)
+	for _, pkg := range roots {
+		diags = append(diags, directive.Loose(directive.Lines(set.Fset, pkg.Syntax), directiveKey)...)
+	}
 	if diag.HasErrors(diags) {
 		// What is wrong with a container may well be one of the type errors,
 		// but for those of a call to its constructor.
