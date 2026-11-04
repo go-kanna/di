@@ -390,6 +390,10 @@ func (pl *planner) missing(t types.Type, via []string, near []string) {
 	default:
 		if home != nil && home.Path() != pl.own.Path() && !pl.w.local(home) {
 			d = d.WithHints(home.Path() + " is not in your module, so kanna-di does not look there")
+			if ps, _ := pl.candidates(home, t, false); len(ps) == 1 {
+				d = d.WithHints(fmt.Sprintf("%s returns it: choose it with _ %s `di:\"with=%s\"`",
+					pl.nameOf(ps[0]), pl.typeString(t), pl.nameOf(ps[0])))
+			}
 		}
 		d = d.WithHints(fmt.Sprintf(
 			`return one from a function in package %s, take it with di:"arg", or choose a provider with di:"with=..."`,
