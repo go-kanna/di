@@ -178,11 +178,14 @@ For each type it needs, kanna-di takes the first of these that has one:
 3. what the container embeds: an exported field of a struct it embeds or declares as `_`, or the `with=` of a
    container it builds in place (see [Containers](#containers))
 4. a function in the container's package, exported or not, or an exported function in the package declaring the type,
-   when that package is in your module or your go.work. The functions of the two packages count together, so that
-   one in either never hides one in the other
+   when that package is in your module, the one whose go.mod is above the container. The functions of the two
+   packages count together, so that one in either never hides one in the other
 
 What the container embeds comes before any function, as embedding says what the container holds. A field added to a
 struct it embeds therefore serves the container from then on, in place of the function that made its type.
+
+A go.work does not widen your module, so that a checkout without one, as CI often is, finds the same. A function of
+another module of the workspace is chosen with `with=`, as one of any other module is.
 
 Finding none stops generation, and so do two at the same level. The error traces the need back to the field:
 

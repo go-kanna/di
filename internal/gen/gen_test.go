@@ -390,6 +390,37 @@ type server struct {
 	}
 }
 
+// TestCommand_LooksInNoOtherModuleOfTheWorkspace has the go.work it sets
+// GOWORK to, so it runs on its own.
+func TestCommand_LooksInNoOtherModuleOfTheWorkspace(t *testing.T) {
+	root := t.TempDir()
+	for name, content := range map[string]string{
+		"go.work":      "go 1.26.0\n\nuse (\n\t./app\n\t./repo\n)\n",
+		"repo/go.mod":  "module example.com/repo\n\ngo 1.26.0\n",
+		"repo/repo.go": "package repo\n\ntype Users struct{}\n\nfunc NewUsers() *Users { return &Users{} }\n",
+		"app/go.mod":   "module example.com/app\n\ngo 1.26.0\n\nrequire example.com/repo v0.0.0\n",
+		"app/server.go": "package app\n\nimport \"example.com/repo\"\n\n" +
+			"//kanna:container\ntype server struct {\n\tusers *repo.Users\n}\n",
+	} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("GOWORK", filepath.Join(root, "go.work"))
+
+	code, _, stderr := execute(t, filepath.Join(root, "app"))
+	want := "./server.go:7:2: error: nothing provides *repo.Users\n" +
+		"  example.com/repo is not in your module, so kanna-di does not look there\n" +
+		"  repo.NewUsers returns it: choose it with _ *repo.Users `di:\"with=repo.NewUsers\"`\n"
+	if code != cli.ExitFailure || !strings.HasPrefix(stderr, want) {
+		t.Errorf("exit %d, stderr:\n%s\nwant %d and it to start with\n%s", code, stderr, cli.ExitFailure, want)
+	}
+}
+
 func TestCommand_StopsAtWhatDoesNotCompile(t *testing.T) {
 	t.Parallel()
 

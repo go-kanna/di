@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -12,14 +13,16 @@ import (
 )
 
 // modulePackages names the packages of the user's module, by import path: the
-// module dir is in, or every module of the workspace it is in. These are the
-// packages kanna-di looks in on its own, and those a with= may name.
+// one whose go.mod is above dir. These are the packages kanna-di looks in on
+// its own. A go.work does not widen them, so that what a run finds is the same
+// in a checkout without one, as in CI.
 //
 // Only names are read, which the go command lists without compiling anything.
 func modulePackages(dir, tags string) (map[string]string, error) {
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(context.Background(), "go", "list", "-m", "-f", "{{.Path}}")
 	cmd.Dir, cmd.Stderr = dir, &stderr
+	cmd.Env = append(os.Environ(), "GOWORK=off")
 	out, err := cmd.Output()
 	if err != nil {
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
@@ -27,23 +30,24 @@ func modulePackages(dir, tags string) (map[string]string, error) {
 		}
 		return nil, fmt.Errorf("go list -m: %w", err)
 	}
+	mod := strings.TrimSpace(string(out))
 
-	var patterns []string
-	for mod := range strings.FieldsSeq(string(out)) {
-		patterns = append(patterns, mod+"/...")
-	}
-	cfg := &packages.Config{Mode: packages.NeedName, Dir: dir}
+	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedModule, Dir: dir}
 	if tags != "" {
 		cfg.BuildFlags = []string{"-tags=" + tags}
 	}
-	pkgs, err := packages.Load(cfg, patterns...)
+	pkgs, err := packages.Load(cfg, mod+"/...")
 	if err != nil {
 		return nil, fmt.Errorf("list the packages of the module: %w", err)
 	}
 
 	names := make(map[string]string, len(pkgs))
 	for _, p := range pkgs {
-		names[p.PkgPath] = p.Name
+		// In a workspace, the pattern also matches the packages of a module
+		// nested in this one.
+		if p.Module != nil && p.Module.Path == mod {
+			names[p.PkgPath] = p.Name
+		}
 	}
 	return names, nil
 }
