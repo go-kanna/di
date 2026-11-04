@@ -328,6 +328,9 @@ The directive takes options:
 | `//kanna:container returns=<type>` | declare what the constructor returns: the struct, to return it by value, or an interface it implements (default: a pointer) |
 | `//kanna:container must`           | also write `MustNewServer` (`mustNewServer` for `newServer`), which panics instead of returning an error                    |
 
+The must variant is written even when no provider fails, as a call of the constructor, so that the code calling it
+stays as providers that fail come and go.
+
 A generic struct cannot be a container: its constructor would have no way to choose the type arguments. A struct with
 `di` tags but no directive gets a warning, as does a misspelled directive, and one a blank line keeps from its struct,
 which is then no doc comment of it.
