@@ -76,10 +76,13 @@ func (f field) zero() bool {
 
 // paramName is what the constructor calls the parameter of a fromArg field:
 // the name its tag gives, or one made from its type, or "" when the type has
-// no name to make one from.
+// no name to make one from. A context.Context is ctx, as Go code calls one.
 func (f field) paramName() string {
-	if f.param != "" {
+	switch {
+	case f.param != "":
 		return f.param
+	case isNamed(f.Type, "context", "Context"):
+		return "ctx"
 	}
 	return nameOf(f.Type)
 }
@@ -385,6 +388,12 @@ func mustOf(ctor string) string {
 // nameOf makes a name for a value of type t from the name of its type, as a
 // person would: server for *Server, db for *sql.DB, httpClient for
 // *HTTPClient. A type without a name, such as []string, gives "".
+// isNamed reports whether t is the type name declared in the package at path.
+func isNamed(t types.Type, path, name string) bool {
+	n, ok := types.Unalias(t).(*types.Named)
+	return ok && n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == path && n.Obj().Name() == name
+}
+
 func nameOf(t types.Type) string {
 	if p, ok := t.(*types.Pointer); ok {
 		t = p.Elem()

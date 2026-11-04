@@ -32,15 +32,20 @@ func emit(pkgPath, pkgName string, plans []plan, declared []string) *gofile.File
 		}
 	}
 
-	// The parameters are named first, so that they keep their names, and the
-	// imports next, so that they keep the names of their packages: the
-	// variables of the bodies give way to both.
+	// A parameter whose name the tag spells out keeps it, and the imports keep
+	// the names of their packages next, as code written by hand does: a
+	// parameter named after its type, such as config for a config.Config,
+	// gives way to both, and the variables of the bodies to all.
 	es := make([]*emitter, len(plans))
 	for i, p := range plans {
 		es[i] = newEmitter(f, p)
+		es[i].nameParams(true)
 	}
 	for _, p := range plans {
 		importAll(f, p)
+	}
+	for _, e := range es {
+		e.nameParams(false)
 	}
 	for _, e := range es {
 		e.constructor()
@@ -76,15 +81,19 @@ type emitter struct {
 	params, names []string
 }
 
-// newEmitter starts the emitter of p, naming the parameters of its
-// constructor.
+// newEmitter starts the emitter of p.
 func newEmitter(f *gofile.File, p plan) *emitter {
-	e := &emitter{f: f, p: p, own: p.c.Named.Obj().Pkg(), scope: f.Scope()}
-	e.params = make([]string, len(p.params))
-	for i, prm := range p.params {
-		e.params[i] = e.scope.Name(prm.name)
+	return &emitter{f: f, p: p, own: p.c.Named.Obj().Pkg(), scope: f.Scope(), params: make([]string, len(p.params))}
+}
+
+// nameParams names the parameters of the constructor whose names the tags
+// spell out, or the rest.
+func (e *emitter) nameParams(spelled bool) {
+	for i, prm := range e.p.params {
+		if prm.spelled == spelled {
+			e.params[i] = e.scope.Name(prm.name)
+		}
 	}
-	return e
 }
 
 // constructor writes the constructor:

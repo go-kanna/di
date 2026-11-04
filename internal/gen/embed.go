@@ -62,7 +62,7 @@ func (pl *planner) collect(c container, top bool, path []string) {
 		case fromArg:
 			if k := typeKey(f.Type); !hasKey(pl.args, k) {
 				pl.args[k] = len(pl.pl.params)
-				pl.pl.params = append(pl.pl.params, param{name: f.paramName(), typ: f.Type})
+				pl.pl.params = append(pl.pl.params, param{name: f.paramName(), typ: f.Type, spelled: f.param != ""})
 			}
 		case fromRef:
 			if top {
