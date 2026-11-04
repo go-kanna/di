@@ -225,6 +225,10 @@ The provider's result only has to be assignable to the type, which is how an int
 named field, `with=` also stores the value; on `_`, it only chooses, and a struct's fields then serve the container (see
 [Containers](#containers)).
 
+A container hands out one value of a type, to everything that needs one, so two fields of a type cannot each have a
+provider, or be taken as two parameters. For a primary and a replica `*sql.DB`, give each a type of its own, such as
+`type ReplicaDB struct{ *sql.DB }`, with a provider returning it.
+
 ```console
 ./server.go:9:2: error: package postgres has no function NewUserRepositry (field _)
   did you mean NewUserRepository?
@@ -239,17 +243,17 @@ named field, `with=` also stores the value; on `_`, it only chooses, and a struc
 |-------------------|-------------------------------------------------------------------|----------------------------------------------------------------------|
 | no tag            | resolve the field's type and store the value                      | a struct with exported fields: resolve it, store nothing; else error |
 | `di:"with=<ref>"` | resolve it with ref, which serves the type in the whole container | choose ref for the type, store nothing                               |
-| `di:"arg"`        | take it as a parameter, named after its type, and store it        | take it as a parameter only                                          |
+| `di:"arg"`        | take it as a parameter, named after the field, and store it       | take it as a parameter, named after its type, only                   |
 | `di:"arg=<name>"` | the same, with the parameter's name spelled out                   | the same, with the parameter's name                                  |
 | `di:"-"`          | leave the field alone                                             | error                                                                |
 
 A named or embedded field without a tag whose type is a struct with no fields, not a pointer to one, is left at its zero
 value, the only value it has: a gRPC server embedding `todov1.UnimplementedTodoServiceServer` needs no provider for it.
 
-A parameter named after its type gives way to the imports, which keep the names of their packages, as code written by
-hand does: a `config.Config` is `config2 config.Config`. A `context.Context` is `ctx`, as Go code calls one. A name
-spelled out keeps itself, and an import the generated file needs under it is renamed instead; a name spelled out that
-the package declares at the top level, or that Go does, is an error.
+A parameter named after its field or its type gives way to the imports, which keep the names of their packages, as code
+written by hand does: a field `config config.Config` is `config2 config.Config`. A blank `context.Context` is `ctx`, as
+Go code calls one. A name spelled out keeps itself, and an import the generated file needs under it is renamed instead;
+a name spelled out that the package declares at the top level, or that Go does, is an error.
 
 What the container takes or chooses but nothing needs draws a warning:
 
