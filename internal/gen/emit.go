@@ -134,6 +134,9 @@ func (e *emitter) constructor() {
 			// its type, which the package declares.
 			e.names[i] = e.literal(s.lit.c, s.lit.pointer, s.lit.fields)
 			continue
+		case s.kind == zeroStep:
+			e.names[i] = e.typeString(s.typ) + "{}"
+			continue
 		}
 		e.names[i] = scope.Name(s.name)
 		wrote = true
@@ -161,7 +164,7 @@ func (e *emitter) constructor() {
 			fmt.Fprintf(e.f, "\t%s := %s.%s\n", e.names[i], e.names[s.of], strings.Join(s.path, "."))
 		case literalStep:
 			fmt.Fprintf(e.f, "\t%s := %s\n", e.names[i], e.literal(s.lit.c, s.lit.pointer, s.lit.fields))
-		case paramStep:
+		case paramStep, zeroStep:
 		}
 	}
 

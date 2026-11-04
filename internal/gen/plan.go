@@ -81,6 +81,10 @@ const (
 
 	// literalStep is a container the container embeds, built in place.
 	literalStep
+
+	// zeroStep is the zero value of a struct without fields, the only value
+	// it has.
+	zeroStep
 )
 
 // step makes one value.
@@ -254,6 +258,9 @@ func (pl *planner) find(t types.Type, k string, via []string) int {
 	}
 	if s, ok := pl.fromEmbedded(t, k, via); ok {
 		return s
+	}
+	if fieldless(t) {
+		return pl.add(step{kind: zeroStep, typ: t})
 	}
 
 	// The functions of both packages count together, so that one added to
@@ -522,6 +529,18 @@ func (pl *planner) nameOf(p provider) string {
 
 func (pl *planner) typeString(t types.Type) string {
 	return typeString(t, pl.own)
+}
+
+// fieldless reports whether t is a named struct type without fields, not a
+// pointer to one, whose zero value is the only value it has. A field of the
+// type is left at it, and so is a parameter, rather than calling a function.
+func fieldless(t types.Type) bool {
+	n, ok := types.Unalias(t).(*types.Named)
+	if !ok {
+		return false
+	}
+	st, ok := n.Underlying().(*types.Struct)
+	return ok && st.NumFields() == 0
 }
 
 // homeOf returns the package declaring t, or the type t points to, or nil for
