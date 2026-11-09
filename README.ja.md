@@ -56,13 +56,15 @@ func Load() (Config, error)
 package main
 
 import (
+	"database/sql"
 	"net/http"
 
-	"example.com/shop/handler"
-	"example.com/shop/mail"
-	_ "example.com/shop/postgres"
-	_ "example.com/shop/sendgrid"
-	"example.com/shop/user"
+	"example.com/shop/internal/config"
+	"example.com/shop/internal/handler"
+	_ "example.com/shop/internal/infra/postgres"
+	_ "example.com/shop/internal/infra/sendgrid"
+	"example.com/shop/internal/mail"
+	"example.com/shop/internal/user"
 )
 
 //go:generate go tool kanna-di
