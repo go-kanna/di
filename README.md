@@ -7,8 +7,8 @@
 [![Release](https://img.shields.io/github/v/tag/go-kanna/di?label=release&sort=semver)](https://github.com/go-kanna/di/tags)
 [![日本語](https://img.shields.io/badge/lang-%E6%97%A5%E6%9C%AC%E8%AA%9E-blue.svg)](README.ja.md)
 
-kanna-di writes the constructor of a container struct. Each field gets its value from a provider — the function next to
-the field's type, or one next to the container — and the providers those need in turn, called in order in plain Go.
+kanna-di writes the constructor of a container struct. Each field gets its value from a provider (the function next to
+the field's type, or one next to the container) and the providers those need in turn, called in order in plain Go.
 
 Part of the [kanna](https://go-kanna.github.io/) family of code generators. Requires Go 1.26. There is nothing to
 import at run time: the generated code calls your own functions and nothing else.
@@ -53,7 +53,7 @@ func NewUser(registerUser *usecase.RegisterUser, getUser *usecase.GetUser) *User
 func Load() (Config, error)
 ```
 
-The composition root already has a struct that holds what the program is made of — the server, with its handlers and
+The composition root already has a struct that holds what the program is made of: the server, with its handlers and
 its routes. Mark it `//kanna:container`. What only this root can decide goes next to it: which implementation serves
 each of the domain's interfaces, and how to open what the standard library provides.
 
@@ -154,8 +154,8 @@ When a constructor's parameters change, the next `go generate` changes the code 
 
 ## Providers
 
-A provider is a top-level function whose first result is a type declared in a package — a struct, an interface, or
-any other named type — or a pointer to one:
+A provider is a top-level function whose first result is a type declared in a package (a struct, an interface, or
+any other named type) or a pointer to one:
 
 | Results            | The constructor                                    |
 |--------------------|----------------------------------------------------|
@@ -210,8 +210,8 @@ $ go generate
 A function anywhere else is used only when the container names it. A helper in a testutil package, or a fixture
 returning the same type, changes nothing about what the container gets. Nor are the standard library and other modules
 searched: the only function of io that returns an `io.Writer` is `MultiWriter`, which, called with nothing, writes
-nowhere. For such a type, write a function next to the container — most need configuring anyway, as `sql.Open` needs a
-DSN — or choose one with `with=`.
+nowhere. For such a type, write a function next to the container (most need configuring anyway, as `sql.Open` needs a
+DSN) or choose one with `with=`.
 
 ## Choosing a provider
 
@@ -268,7 +268,7 @@ What the container takes or chooses but nothing needs draws a warning:
 ./server.go:9:2: warning: nothing in server needs user.Repository, so its with= chooses nothing
 ```
 
-An embedded struct, or pointer to one, is resolved — or, tagged `di:"arg"`, taken as a parameter — and stored like any
+An embedded struct, or pointer to one, is resolved (or, tagged `di:"arg"`, taken as a parameter) and stored like any
 field, and its exported fields, promoted ones included, serve the rest of the container; they cannot serve what the
 struct itself is built from. A shallower field hides a deeper one of the same type, as Go hides a deeper field of the
 same name; two at the same depth are an error when the type is needed.
@@ -313,12 +313,13 @@ func NewDeleteTodo() (*DeleteTodo, func(), error) {
 }
 ```
 
-A container of the same package embedded without a tag — a struct marked `//kanna:container` itself — is not built by
+A container of the same package embedded without a tag (a struct marked `//kanna:container` itself) is not built by
 its own constructor but here, field by field, as part of this one. What it takes as arguments, this constructor takes
 too, unless it takes the type itself; its `with=` serve this container after this container's own. The value built
-serves whatever else in the container needs its type, wherever its field is declared. That is how a test takes a server
-apart without restating it (see [Tests](#tests)). A container of another package is built by its
-constructor instead, since its unexported fields cannot be set from here, and so is a named field of a container type.
+serves whatever else in the container needs its type, wherever its field is declared. That is how a test builds a
+server with some of its providers replaced, without restating it (see [Tests](#tests)). A container of another package
+is built by its constructor instead, since its unexported fields cannot be set from here, and so is a named field of a
+container type.
 
 The constructor is named after the struct: `NewServer` for `Server`, and `newServer` for `server`, so that it is
 exported exactly when the struct is. A function of another name, such as one loading the configuration first, is
@@ -378,7 +379,7 @@ neither is anything for implementing `io.Closer`.
 ## Tests
 
 A container declared in a `_test.go` file is generated too, into `di_gen_test.go` next to it, in the package that file
-declares — the package itself or its external `_test` package. This one, in the package itself, embeds the server, so
+declares (the package itself or its external `_test` package). This one, in the package itself, embeds the server, so
 it is the server, built here with the repository and the sender taken as arguments instead of chosen with `with=`.
 Nothing then needs `*sql.DB` or `config.Config`: `openDB` and `config.Load` are not called, and `newTestServer` returns
 neither a cleanup nor an error.
@@ -435,7 +436,7 @@ itself, which lists a package's files before it runs the generators; the file is
 
 ## Example
 
-[`example`](example) wires a small shop in the layers above — domain, use cases, infrastructure, handlers — finding its
+[`example`](example) wires a small shop in the layers above (domain, use cases, infrastructure, handlers), finding its
 providers through bindings to interfaces, an argument, and an embedded container, with cleanups, a must variant, and
 a test container that swaps the repository for one in memory. CI regenerates it and fails if the output would change.
 
