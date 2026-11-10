@@ -63,7 +63,7 @@ func fakeRepo() Repo { return nil }
 		"openDB(Config) *DB, error",
 		"OpenCache(Config) *Cache, func()",
 		"Dial(Config) *Cache, func(), error",
-		"NewRepo(*DB) Repo",
+		"NewRepo(*DB, ...string) Repo",
 		"Named(Config) *DB, func()", // a cleanup of a type declared as func()
 		"FromAlias() Alias",
 		"IntBox() *Box[int]",

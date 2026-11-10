@@ -17,9 +17,12 @@ type provider struct {
 	// result is the first result, the value the function provides.
 	result types.Type
 
-	// params are what a call passes, a variadic parameter left out: a call
-	// may leave it empty, and nothing could provide its slice anyway.
+	// params are what a call passes, a variadic parameter left out.
 	params []types.Type
+
+	// variadic is the element type of the variadic parameter, or nil. A call
+	// passes it the value the container declares of the type, or nothing.
+	variadic types.Type
 
 	// errs and cleanup report that the function also returns an error, or a
 	// func() that releases what it opened.
@@ -107,6 +110,11 @@ func (x *index) providerOf(fn *types.Func) (provider, bool) {
 	for i := range params.Len() {
 		if !sig.Variadic() || i < params.Len()-1 {
 			p.params = append(p.params, params.At(i).Type())
+		}
+	}
+	if sig.Variadic() {
+		if s, ok := params.At(params.Len() - 1).Type().(*types.Slice); ok {
+			p.variadic = s.Elem()
 		}
 	}
 

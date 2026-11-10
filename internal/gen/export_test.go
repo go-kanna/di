@@ -79,10 +79,9 @@ func Containers(fset *token.FileSet, pkgs []*packages.Package) ([]Container, []s
 }
 
 // Providers is every function of pkg that lookup can find, in the order they
-// are declared, each spelled as its signature would be with the variadic
-// parameter left out, such as "openDB(Config) *DB, func(), error", or as
-// "openDB: <why it is bad>", and followed by " (test)" for one declared in a
-// test file.
+// are declared, each spelled as its signature would be, such as
+// "openDB(Config) *DB, func(), error", or as "openDB: <why it is bad>", and
+// followed by " (test)" for one declared in a test file.
 func Providers(pkg *packages.Package) []string {
 	x := newIndex(pkg.Fset)
 	var all []provider
@@ -99,9 +98,12 @@ func Providers(pkg *packages.Package) []string {
 		if p.bad != "" {
 			s += ": " + p.bad
 		} else {
-			params := make([]string, len(p.params))
-			for j, t := range p.params {
-				params[j] = typeString(t, pkg.Types)
+			var params []string
+			for _, t := range p.params {
+				params = append(params, typeString(t, pkg.Types))
+			}
+			if p.variadic != nil {
+				params = append(params, "..."+typeString(p.variadic, pkg.Types))
 			}
 			s += "(" + strings.Join(params, ", ") + ") " + typeString(p.result, pkg.Types)
 			if p.cleanup {

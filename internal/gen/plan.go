@@ -158,6 +158,10 @@ type planner struct {
 	// chose, by type.
 	innerChosen map[string][]innerChoice
 
+	// zeros holds the structs without fields that the container, or one it
+	// builds in place, has a field of, by type.
+	zeros map[string]bool
+
 	// root is the field whose value is being worked out, where a diagnostic
 	// about any of its dependencies is reported.
 	root scan.Field
@@ -191,6 +195,7 @@ func planOf(w *world, c container) (plan, []diag.Diag, []wait) {
 		byType:      make(map[string]int),
 		byCall:      make(map[string]int),
 		innerChosen: make(map[string][]innerChoice),
+		zeros:       make(map[string]bool),
 		used:        make(map[string]bool),
 	}
 
@@ -349,16 +354,36 @@ func (pl *planner) call(p provider, via []string) int {
 	defer func() { pl.calling = pl.calling[:len(pl.calling)-1] }()
 
 	via = append(slices.Clip(via), name)
-	args := make([]int, len(p.params))
-	for i, t := range p.params {
-		if args[i] = pl.need(t, via); args[i] < 0 {
+	args := make([]int, 0, len(p.params)+1)
+	for _, t := range p.params {
+		s := pl.need(t, via)
+		if s < 0 {
 			return -1
 		}
+		args = append(args, s)
+	}
+	if p.variadic != nil && pl.declares(p.variadic) {
+		s := pl.need(p.variadic, via)
+		if s < 0 {
+			return -1
+		}
+		args = append(args, s)
 	}
 
 	s := pl.add(step{kind: callStep, typ: p.result, p: p, args: args})
 	pl.byCall[key] = s
 	return s
+}
+
+// declares reports whether the container says where a value of t comes from:
+// it takes or chooses one, what it embeds holds one, or it has a field of t,
+// a struct without fields. A variadic parameter is passed only such a value,
+// so that what a call gets is read off the container, and a function found
+// never fills one in.
+func (pl *planner) declares(t types.Type) bool {
+	k := typeKey(t)
+	return hasKey(pl.args, k) || hasKey(pl.chosen, k) || len(pl.innerChosen[k]) > 0 || pl.zeros[k] ||
+		slices.ContainsFunc(pl.embeds, func(e *embedded) bool { return hasKey(e.byType, k) })
 }
 
 func (pl *planner) add(s step) int {

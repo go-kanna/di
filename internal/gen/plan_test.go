@@ -552,3 +552,121 @@ func spellPlans(plans map[string][]string) string {
 	}
 	return b.String()
 }
+
+func TestPlans_Variadic(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		decls string
+		body  string
+		want  []string
+		diag  string
+	}{
+		{
+			name: "nothing provides the element, so the parameter is left empty",
+			want: []string{"newC() *c", "repo := newRepo()", "c{repo: repo}"},
+		},
+		{
+			name:  "with= chooses the element, and every call gets it",
+			decls: "func clockOption() Option { return nil }\nfunc newStore(opts ...Option) *Store { return nil }",
+			body:  "_ Option `di:\"with=clockOption\"`\nstore *Store",
+			want: []string{
+				"newC() *c", "opts := clockOption()", "repo := newRepo(opts)", "store := newStore(opts)",
+				"c{repo: repo, store: store}",
+			},
+		},
+		{
+			name: "an argument",
+			body: "_ Option `di:\"arg\"`",
+			want: []string{"newC(option Option) *c", "repo := newRepo(option)", "c{repo: repo}"},
+		},
+		{
+			name: "a field of an embedded struct",
+			body: "Deps `di:\"arg\"`",
+			want: []string{"newC(deps Deps) *c", "clock := deps.Clock", "repo := newRepo(clock)", "c{repo: repo, Deps: deps}"},
+		},
+		{
+			name:  "a function found is not passed",
+			decls: "func clockOption() Option { return nil }\nfunc hookOption() Option { return nil }",
+			want:  []string{"newC() *c", "repo := newRepo()", "c{repo: repo}"},
+		},
+		{
+			name:  "nor one another call needs",
+			decls: "func clockOption() Option { return nil }\nfunc newStore(o Option) *Store { return nil }",
+			body:  "store *Store",
+			want: []string{
+				"newC() *c", "repo := newRepo()", "o := clockOption()", "store := newStore(o)",
+				"c{repo: repo, store: store}",
+			},
+		},
+		{
+			name:  "a struct without fields the container has a field of",
+			decls: "func newTicker(...Tick) *Ticker { return nil }",
+			body:  "tick Tick\nticker *Ticker",
+			want:  []string{"newC() *c", "repo := newRepo()", "ticker := newTicker(Tick{})", "c{repo: repo, ticker: ticker}"},
+		},
+		{
+			name:  "a struct without fields the container does not have",
+			decls: "func newTicker(...Tick) *Ticker { return nil }",
+			body:  "ticker *Ticker",
+			want:  []string{"newC() *c", "repo := newRepo()", "ticker := newTicker()", "c{repo: repo, ticker: ticker}"},
+		},
+		{
+			name:  "a type without a name of its own is not handed out",
+			decls: "func newNames(names ...string) *Names { return nil }\nfunc name() string { return \"\" }",
+			body:  "names *Names",
+			want:  []string{"newC() *c", "repo := newRepo()", "names := newNames()", "c{repo: repo, names: names}"},
+		},
+		{
+			name:  "a chosen function that cannot be called",
+			decls: "func clockOption(c *Clock) Option { return nil }",
+			body:  "_ Option `di:\"with=clockOption\"`",
+			diag:  "x.go:16:2: error: nothing provides *Clock, which clockOption needs\n  via c.repo → newRepo → clockOption",
+		},
+		{
+			// As io.MultiWriter would: it takes ...io.Writer.
+			name:  "a chosen function taking what it returns",
+			decls: "func chain(opts ...Option) Option { return nil }",
+			body:  "_ Option `di:\"with=chain\"`",
+			diag:  "x.go:16:2: error: dependency cycle: chain → chain",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, diags := plans(t, map[string]string{"x.go": `package test
+
+type (
+	Option func(*Repo)
+	Repo   struct{ _ int }
+	Store  struct{ _ int }
+	Names  struct{ _ int }
+	Clock  struct{ _ int }
+	Ticker struct{ _ int }
+	Tick   struct{}
+	Deps   struct{ Clock Option }
+)
+
+//kanna:container
+type c struct {
+	repo *Repo
+	` + strings.ReplaceAll(tt.body, "\n", "\n\t") + `
+}
+
+func newRepo(opts ...Option) *Repo { return nil }
+
+` + tt.decls + "\n"})
+			if tt.diag != "" {
+				if !strings.Contains(strings.Join(diags, "\n"), tt.diag) {
+					t.Errorf("diagnostics =\n%s\nwant one to say\n%s", strings.Join(diags, "\n"), tt.diag)
+				}
+				return
+			}
+			if !slices.Equal(got["c"], tt.want) || len(diags) > 0 {
+				t.Errorf("plan =\n%s\nwant\n%s\ndiagnostics %q", strings.Join(got["c"], "\n"), strings.Join(tt.want, "\n"), diags)
+			}
+		})
+	}
+}

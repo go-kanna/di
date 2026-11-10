@@ -76,6 +76,9 @@ func (pl *planner) collect(c container, top bool, path []string) {
 
 	for _, f := range c.fields {
 		if f.zero() {
+			if f.source == fromType {
+				pl.zeros[typeKey(f.Type)] = true
+			}
 			continue
 		}
 		via := strings.Join(path, ".") + "." + f.Name

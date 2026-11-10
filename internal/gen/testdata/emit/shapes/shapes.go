@@ -106,4 +106,28 @@ type configured struct {
 	ctx    context.Context `di:"arg"`
 }
 
+// Option is what newRepo and newStore take any number of. optioned chooses
+// withClock, whose value each call gets.
+type (
+	Option func(*options)
+	Repo   struct{}
+	Store  struct{}
+
+	options struct{}
+)
+
+func withClock() Option { return func(*options) {} }
+
+func newRepo(*DB, ...Option) *Repo { return &Repo{} }
+
+func newStore(db *DB, opts ...Option) *Store { return &Store{} }
+
+//kanna:container
+type optioned struct {
+	_ Option `di:"with=withClock"`
+
+	repo  *Repo
+	store *Store
+}
+
 var _ = users
