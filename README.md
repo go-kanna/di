@@ -413,7 +413,8 @@ stays as providers that fail come and go.
 
 A generic struct cannot be a container: its constructor would have no way to choose the type arguments. A struct with
 `di` tags but no directive gets a warning, as does a misspelled directive, and one a blank line keeps from its struct,
-which is then no doc comment of it.
+which is then no doc comment of it. The directive on anything but a struct type, such as `type Level string`, a type
+alias, an interface, or a function, is an error.
 
 Write the directive against the comment marker. Go only treats `//kanna:…` as a directive when the two are adjacent;
 with a space, `// kanna:container` stays part of the doc comment and shows up in `go doc` and on pkg.go.dev. kanna-di
@@ -552,7 +553,7 @@ cleanup, as an injector does. What differs is where the wiring is said:
 
 | wire                                           | kanna-di                                                                                                 |
 |------------------------------------------------|----------------------------------------------------------------------------------------------------------|
-| an injector function calling `wire.Build`      | a struct marked `//kanna:container`; the directive marks a struct, and on a function does nothing        |
+| an injector function calling `wire.Build`      | a struct marked `//kanna:container`; the directive marks a struct, and on a function is an error         |
 | `wire.Build`, `wire.NewSet`, and provider sets | none: a provider is found by its type, next to the container or the type (see [Providers](#providers))   |
 | the parameters of an injector                  | `di:"arg"`                                                                                               |
 | `wire.Bind(new(I), new(*T))`                   | `` _ I `di:"with=NewT"` ``                                                                               |

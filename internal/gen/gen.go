@@ -120,7 +120,9 @@ func generate(
 	written := outputOf(roots)
 	cs, diags := containers(set.Fset, scan.Structs(roots), dir, written)
 	for _, pkg := range roots {
-		diags = append(diags, directive.Loose(directive.Lines(set.Fset, pkg.Syntax), directiveKey)...)
+		lines := directive.Lines(set.Fset, pkg.Syntax)
+		diags = append(diags, directive.Loose(lines, directiveKey)...)
+		diags = append(diags, directive.Misplaced(lines, pkg.Types, directive.StructType, directiveKey)...)
 	}
 	if diag.HasErrors(diags) {
 		// What is wrong with a container may well be one of the type errors,
