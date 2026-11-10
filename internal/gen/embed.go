@@ -51,16 +51,17 @@ type innerChoice struct {
 
 // collect sets out what c and the containers it builds in place take and
 // choose, and the structs they embed otherwise. path names c from the
-// container being planned on.
+// container being planned on, and outer holds the types the containers
+// around c take, choose, or find in a struct they embed.
 //
-// The container's own arguments and with= come before those of the containers
-// it builds in place, so that a type it takes or chooses itself overrides
-// theirs.
-func (pl *planner) collect(c container, top bool, path []string) {
+// A container built in place does not take a type the containers around it
+// say where to get, so that what they take, choose, or embed overrides its
+// arguments, as it overrides its with=.
+func (pl *planner) collect(c container, top bool, path []string, outer map[string]bool) {
 	for _, f := range c.fields {
 		switch f.source {
 		case fromArg:
-			if k := typeKey(f.Type); !hasKey(pl.args, k) {
+			if k := typeKey(f.Type); !outer[k] && !hasKey(pl.args, k) {
 				pl.args[k] = len(pl.pl.params)
 				pl.pl.params = append(pl.pl.params, param{name: f.paramName(), typ: f.Type, spelled: f.param != ""})
 			}
@@ -90,7 +91,7 @@ func (pl *planner) collect(c container, top bool, path []string) {
 						fmt.Errorf("%s cannot be built in place: it embeds itself", inner.Name)))
 					continue
 				}
-				pl.collect(inner, false, append(slices.Clip(path), f.Name))
+				pl.collect(inner, false, append(slices.Clip(path), f.Name), pl.declaredBy(c, outer))
 				continue
 			}
 			pl.embeds = append(pl.embeds, &embedded{f: f, via: via, byType: promotedOf(f.Type, pl.own)})
@@ -103,6 +104,26 @@ func (pl *planner) collect(c container, top bool, path []string) {
 			}
 		}
 	}
+}
+
+// declaredBy returns outer with the types c takes, chooses, or finds in a
+// struct it embeds without building it in place.
+func (pl *planner) declaredBy(c container, outer map[string]bool) map[string]bool {
+	ks := maps.Clone(outer)
+	for _, f := range c.fields {
+		if f.zero() {
+			continue
+		}
+		if f.source == fromArg || f.source == fromRef {
+			ks[typeKey(f.Type)] = true
+		}
+		if _, inPlace := pl.inlined(f); f.Embedded && !inPlace || f.blank() {
+			for k := range promotedOf(f.Type, pl.own) {
+				ks[k] = true
+			}
+		}
+	}
+	return ks
 }
 
 // fill works out the field values of c, a container being planned or built in

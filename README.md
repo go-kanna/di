@@ -358,11 +358,12 @@ func NewDeleteTodo() (*DeleteTodo, func(), error) {
 
 A container of the same package embedded without a tag (a struct marked `//kanna:container` itself) is not built by
 its own constructor but here, field by field, as part of this one. What it takes as arguments, this constructor takes
-too, unless it takes the type itself; its `with=` serve this container after this container's own. The value built
-serves whatever else in the container needs its type, wherever its field is declared. That is how a test builds a
-server with some of its providers replaced, without restating it (see [Tests](#tests)). A container of another package
-is built by its constructor instead, since its unexported fields cannot be set from here, and so is a named field of a
-container type.
+too, unless this container takes the type itself, chooses it with `with=`, or embeds a struct with a field of it: what
+the outer container says overrides what the one it builds in place takes. Its `with=` serve this container after this
+container's own. The value built serves whatever else in the container needs its type, wherever its field is declared.
+That is how a test builds a server with some of its providers replaced, without restating it (see [Tests](#tests)). A
+container of another package is built by its constructor instead, since its unexported fields cannot be set from here,
+and so is a named field of a container type.
 
 The constructor is named after the struct: `NewServer` for `Server`, and `newServer` for `server`, so that it is
 exported exactly when the struct is. A function of another name, such as one loading the configuration first, is
@@ -443,6 +444,10 @@ func TestRegisterUser(t *testing.T) {
 	// ...
 }
 ```
+
+What the test container takes or chooses replaces what the server takes as well as what it chooses: had the server
+taken the sender with `di:"arg"`, `` _ mail.Sender `di:"with=newFakeSender"` `` here would call `newFakeSender`, and
+`newTestServer` would not take a sender.
 
 The test calls `newTestServer` before the first run has written it. kanna-di type-checks the packages it loads once
 more with what it is about to write in place, so a call to a constructor that is missing still, or about to take or

@@ -419,6 +419,98 @@ type wrapped struct {
 				},
 			},
 		},
+		{
+			name: "a with= overriding an argument of a container built in place",
+			src: `
+func newImpl() *impl            { return nil }
+func newUsers(repo Repo) *Users { return nil }
+
+//kanna:container
+type server struct {
+	_ Repo ` + "`di:\"arg\"`" + `
+
+	users *Users
+}
+
+//kanna:container
+type testServer struct {
+	*server
+
+	_ Repo ` + "`di:\"with=newImpl\"`" + `
+}
+`,
+			plans: map[string][]string{"testServer": {
+				"newTestServer() *testServer",
+				"repo := newImpl()",
+				"users := newUsers(repo)",
+				"server := &server{users: users}",
+				"testServer{server: server}",
+			}},
+		},
+		{
+			name: "an embedded struct overriding an argument of a container built in place",
+			src: `
+type Deps struct{ DB *DB }
+
+func newUsers(db *DB) *Users { return nil }
+
+//kanna:container
+type server struct {
+	_ *DB ` + "`di:\"arg\"`" + `
+
+	users *Users
+}
+
+//kanna:container
+type wrapped struct {
+	*server
+	Deps ` + "`di:\"arg\"`" + `
+}
+`,
+			plans: map[string][]string{"wrapped": {
+				"newWrapped(deps Deps) *wrapped",
+				"db := deps.DB",
+				"users := newUsers(db)",
+				"server := &server{users: users}",
+				"wrapped{server: server, Deps: deps}",
+			}},
+		},
+		{
+			// The with= of the middle container is around the inner one, and
+			// so overrides its argument.
+			name: "a with= of a container built in place overriding an argument of one it builds in place",
+			src: `
+func newImpl() *impl            { return nil }
+func newUsers(repo Repo) *Users { return nil }
+
+//kanna:container
+type server struct {
+	_ Repo ` + "`di:\"arg\"`" + `
+
+	users *Users
+}
+
+//kanna:container
+type middle struct {
+	*server
+
+	_ Repo ` + "`di:\"with=newImpl\"`" + `
+}
+
+//kanna:container
+type top struct {
+	middle
+}
+`,
+			plans: map[string][]string{"top": {
+				"newTop() *top",
+				"repo := newImpl()",
+				"users := newUsers(repo)",
+				"server := &server{users: users}",
+				"middle := middle{server: server}",
+				"top{middle: middle}",
+			}},
+		},
 	}
 
 	for _, tt := range tests {
