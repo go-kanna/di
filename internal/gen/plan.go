@@ -202,7 +202,11 @@ func planOf(w *world, c container) (plan, []diag.Diag, []wait) {
 	pl.collect(c, true, []string{c.Name}, map[string]bool{})
 	pl.pl.fields = pl.fill(c, c.Name, true, []string{c.Name})
 
-	pl.warnUnused()
+	// A need cut short by an error, or set aside, leaves what it would have
+	// used unmarked.
+	if !diag.HasErrors(pl.diags) && len(pl.waits) == 0 {
+		pl.warnUnused()
+	}
 	pl.name()
 	for _, s := range pl.pl.steps {
 		pl.pl.errs = pl.pl.errs || s.p.errs
@@ -308,7 +312,8 @@ func (pl *planner) candidates(pkg *types.Package, t types.Type, own bool) ([]pro
 		switch {
 		case pl.w.output[p.pos.Filename]:
 		case p.bad != "":
-			near = append(near, fmt.Sprintf("%s returns %s but cannot be a provider: %s", name, pl.typeString(t), p.bad))
+			near = append(near, fmt.Sprintf("%s returns %s but cannot be a provider: %s",
+				name, pl.typeString(p.result), p.bad))
 		case !own && !p.fn.Exported():
 			near = append(near, fmt.Sprintf("%s returns %s but is not exported", name, pl.typeString(t)))
 		case !p.serves(pl.own, pl.c.test):
@@ -422,7 +427,10 @@ func (pl *planner) missing(t types.Type, via []string, near []string) {
 	default:
 		if home != nil && home.Path() != pl.own.Path() && !pl.w.local(home) {
 			d = d.WithHints(home.Path() + " is not in your module, so kanna-di does not look there")
-			if ps, _ := pl.candidates(home, t, false); len(ps) == 1 {
+			// A variadic one, io.MultiWriter, would be called with nothing.
+			ps, _ := pl.candidates(home, t, false)
+			ps = slices.DeleteFunc(ps, func(p provider) bool { return p.fn.Signature().Variadic() })
+			if len(ps) == 1 {
 				d = d.WithHints(fmt.Sprintf("%s returns it: choose it with _ %s `di:\"with=%s\"`",
 					pl.nameOf(ps[0]), pl.typeString(t), pl.nameOf(ps[0])))
 			}

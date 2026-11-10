@@ -225,6 +225,13 @@ func TestPlans_Diagnostics(t *testing.T) {
 				"a cleanup must be a func(), with neither parameters nor results\n",
 		},
 		{
+			name:  "a generic function",
+			decls: "type Box[T any] struct{ v T }\nfunc newBox[T any]() *Box[T] { return nil }",
+			body:  "box *Box[int]",
+			want: "x.go:13:2: error: nothing provides *Box[int]\n" +
+				"  newBox returns *Box[T] but cannot be a provider: it is generic, and nothing would choose its type arguments\n",
+		},
+		{
 			name:  "a provider of the pointer",
 			decls: "func newDB() *DB { return nil }",
 			body:  "db DB",
@@ -262,6 +269,13 @@ func TestPlans_Diagnostics(t *testing.T) {
 			body: "log *slog.Logger",
 			want: "x.go:13:2: error: nothing provides *slog.Logger\n" +
 				"  log/slog is not in your module, so kanna-di does not look there\n" + hint,
+		},
+		{
+			// The only provider io has, MultiWriter, would write nowhere.
+			name: "a type of another module only a variadic function returns",
+			body: "w io.Writer",
+			want: "x.go:13:2: error: nothing provides io.Writer\n" +
+				"  io is not in your module, so kanna-di does not look there\n" + hint + "\n",
 		},
 		{
 			name:  "two providers",
@@ -353,13 +367,13 @@ func TestPlans_Diagnostics(t *testing.T) {
 
 			files := map[string]string{"x.go": `package test
 
-import "log/slog"
+import ("io"; "log/slog")
 
 type (DB struct{ dsn string }; Users struct{}; App struct{}; Env string; Repo interface{ Find() }; impl struct{})
 
 func (impl) Find() {}
 
-var _ *slog.Logger
+var (_ *slog.Logger; _ io.Writer)
 
 //kanna:container
 type c struct {
@@ -512,6 +526,68 @@ type c struct {
 `})
 	if len(diags) != 1 {
 		t.Errorf("diagnostics = %q, want the with= alone", diags)
+	}
+}
+
+// TestPlans_WarnOfNothingUnusedWhenANeedIsCutShort leaves the arguments after
+// the one that fails, or waits, unmarked: their with= is needed all the same.
+func TestPlans_WarnOfNothingUnusedWhenANeedIsCutShort(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, src string
+	}{
+		{
+			name: "an error",
+			src: `package test
+
+type (Repo interface{ Find() }; impl struct{}; Missing struct{ n int }; A struct{ n int })
+
+func (impl) Find() {}
+
+func newImpl() impl { return impl{} }
+
+func newA(m *Missing, r Repo) *A { return nil }
+
+//kanna:container
+type c struct {
+	_ Repo ` + "`di:\"with=newImpl\"`" + `
+	a *A
+}
+`,
+		},
+		{
+			name: "a wait for a constructor that fails",
+			src: `package test
+
+type (X struct{ n int }; Missing struct{ n int }; Y struct{ n int }; Z struct{ n int })
+
+func newX() *X { return nil }
+
+func newY(m *Missing) *Y { return nil }
+
+func newZ(in *Inner, x *X) *Z { return nil }
+
+//kanna:container
+type Inner struct{ Y *Y }
+
+//kanna:container
+type outer struct {
+	_ *X ` + "`di:\"with=newX\"`" + `
+	z *Z
+}
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, diags := plans(t, map[string]string{"x.go": tt.src})
+			if slices.ContainsFunc(diags, func(d string) bool { return strings.Contains(d, "warning:") }) {
+				t.Errorf("diagnostics = %q, want no warning", diags)
+			}
+		})
 	}
 }
 
