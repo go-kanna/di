@@ -522,6 +522,68 @@ type c struct {
 	}
 }
 
+// TestPlans_WarnOfNothingUnusedWhenANeedIsCutShort leaves the arguments after
+// the one that fails, or waits, unmarked: their with= is needed all the same.
+func TestPlans_WarnOfNothingUnusedWhenANeedIsCutShort(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, src string
+	}{
+		{
+			name: "an error",
+			src: `package test
+
+type (Repo interface{ Find() }; impl struct{}; Missing struct{ n int }; A struct{ n int })
+
+func (impl) Find() {}
+
+func newImpl() impl { return impl{} }
+
+func newA(m *Missing, r Repo) *A { return nil }
+
+//kanna:container
+type c struct {
+	_ Repo ` + "`di:\"with=newImpl\"`" + `
+	a *A
+}
+`,
+		},
+		{
+			name: "a wait for a constructor that fails",
+			src: `package test
+
+type (X struct{ n int }; Missing struct{ n int }; Y struct{ n int }; Z struct{ n int })
+
+func newX() *X { return nil }
+
+func newY(m *Missing) *Y { return nil }
+
+func newZ(in *Inner, x *X) *Z { return nil }
+
+//kanna:container
+type Inner struct{ Y *Y }
+
+//kanna:container
+type outer struct {
+	_ *X ` + "`di:\"with=newX\"`" + `
+	z *Z
+}
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, diags := plans(t, map[string]string{"x.go": tt.src})
+			if slices.ContainsFunc(diags, func(d string) bool { return strings.Contains(d, "warning:") }) {
+				t.Errorf("diagnostics = %q, want no warning", diags)
+			}
+		})
+	}
+}
+
 func TestPlans_LeaveOutTheirOwnConstructor(t *testing.T) {
 	t.Parallel()
 

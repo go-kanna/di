@@ -202,7 +202,11 @@ func planOf(w *world, c container) (plan, []diag.Diag, []wait) {
 	pl.collect(c, true, []string{c.Name}, map[string]bool{})
 	pl.pl.fields = pl.fill(c, c.Name, true, []string{c.Name})
 
-	pl.warnUnused()
+	// A need cut short by an error, or set aside, leaves what it would have
+	// used unmarked.
+	if !diag.HasErrors(pl.diags) && len(pl.waits) == 0 {
+		pl.warnUnused()
+	}
 	pl.name()
 	for _, s := range pl.pl.steps {
 		pl.pl.errs = pl.pl.errs || s.p.errs
