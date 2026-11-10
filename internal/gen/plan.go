@@ -199,7 +199,7 @@ func planOf(w *world, c container) (plan, []diag.Diag, []wait) {
 		used:        make(map[string]bool),
 	}
 
-	pl.collect(c, true, []string{c.Name})
+	pl.collect(c, true, []string{c.Name}, map[string]bool{})
 	pl.pl.fields = pl.fill(c, c.Name, true, []string{c.Name})
 
 	pl.warnUnused()
