@@ -122,6 +122,48 @@ func TestCommand_WarnsOfALooseDirective(t *testing.T) {
 	}
 }
 
+// A //kanna:container on anything but a struct type marks nothing, which is an
+// error at the line. A type declared from a struct is a struct type.
+func TestCommand_RefusesADirectiveOnAnythingButAStruct(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, decl, shape string
+	}{
+		{"named basic", "type level int", "a type other than a struct or an interface"},
+		{"alias", "type level = string", "a type alias"},
+		{"interface", "type runner interface{ Run() }", "an interface type"},
+		{"func", "func newThing() int { return 1 }", "a function"},
+		{"method", "func (*server) run() {}", "a method"},
+		{"var", "var thing int", "a variable"},
+		{"const", "const thing = 1", "a constant"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := writeModule(t, with(shop, map[string]string{
+				"app/server.go": server + "\n//kanna:container\n" + tc.decl + "\n",
+			}))
+			code, _, stderr := execute(t, filepath.Join(dir, "app"))
+			want := "//kanna:container marks a struct type, not " + tc.shape + ", so nothing reads it"
+			if code == cli.ExitOK || !strings.Contains(stderr, want) {
+				t.Errorf("exit %d, stderr = %q, want it to contain %q", code, stderr, want)
+			}
+		})
+	}
+
+	t.Run("type from a struct", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeModule(t, with(shop, map[string]string{
+			"app/server.go": server + "\ntype base struct{}\n\n//kanna:container\ntype worker base\n",
+		}))
+		if code, stdout, stderr := execute(t, filepath.Join(dir, "app")); code != cli.ExitOK || stderr != "" {
+			t.Errorf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
+		}
+	})
+}
+
 func TestCommand_FindsProvidersOfAPackageReachedThroughAnother(t *testing.T) {
 	t.Parallel()
 
