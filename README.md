@@ -154,6 +154,9 @@ next to the container; `user.Repository` and `mail.Sender`, the domain's interfa
 container names. `config.Config` is loaded once, and `openDB` and `sendgrid.NewSender` share it. Nothing is registered.
 When a constructor's parameters change, the next `go generate` changes the code that calls it.
 
+With two or more kanna generators, run them with [`go tool kanna gen`](https://github.com/go-kanna/kanna), which runs
+them in the order they need.
+
 ## Providers
 
 A provider is a top-level function whose first result is a type declared in a package (a struct, an interface, or
@@ -371,6 +374,33 @@ The constructor is named after the struct: `NewServer` for `Server`, and `newSer
 exported exactly when the struct is. A function of another name, such as one loading the configuration first, is
 written by hand and calls it.
 
+The constructor takes its parameters in the order of the fields that take them, and then those of each container it
+builds in place, in the order of that container's fields. A `context.Context` comes first only where it is declared
+first: to take `ctx` first, as Go code does, take it in the outer container ahead of the rest, which a container built
+in place then no longer takes.
+
+```go
+//kanna:container
+type base struct {
+	_   context.Context `di:"arg"`
+	dsn DSN             `di:"arg"`
+}
+
+//kanna:container
+type server struct {
+	_ context.Context `di:"arg"` // without it, newServer(src source.Source, ctx context.Context, dsn DSN)
+	base
+
+	_ source.Source `di:"arg=src"`
+
+	users *handler.User
+}
+```
+
+```go
+func newServer(ctx context.Context, src source.Source, dsn DSN) (*server, func(), error)
+```
+
 The directive takes options:
 
 | Directive                          | Effect                                                                                                                      |
@@ -461,6 +491,83 @@ The functions of a test container's package include those of its `_test.go` file
 file is compiled into that package's tests and nowhere else, so it serves the containers of that package's tests,
 in-package and external, and no other. One directory can hold test containers in either of its two test packages, not
 both: they would share `di_gen_test.go`.
+
+## Settings of kanna-config
+
+[kanna-config](https://github.com/go-kanna/config) writes `LoadX(src source.Source) (X, error)` next to each struct of
+settings `X`, which is the function next to the type that provides `X`. A container of the settings takes the source as
+an argument, named so that it does not give way to the import of `source` as `source2`:
+
+```go
+//kanna:container returns=Config
+type Config struct {
+	_ source.Source `di:"arg=src"`
+
+	API      config.API
+	Database config.Database
+}
+```
+
+```go
+func NewConfig(src source.Source) (Config, error) {
+	api, err := config.LoadAPI(src)
+	if err != nil {
+		return Config{}, err
+	}
+	database, err := config.LoadDatabase(src)
+	if err != nil {
+		return Config{}, err
+	}
+
+	return Config{
+		API:      api,
+		Database: database,
+	}, nil
+}
+```
+
+The containers that need the settings take them, as `` _ Config `di:"arg=cfg"` ``, whose fields then serve their
+providers, so that `config.Database` reaches the function opening the database.
+
+As with any provider, the constructor returns the error of the first `LoadX` that fails and calls none after it: with
+both `API_PORT` and `DATABASE_WRITER_URL` wrong, it reports only `API_PORT`. To report every wrong setting at once,
+write the function by hand in place of the container, calling each `LoadX` and joining their errors:
+
+```go
+func NewConfig(src source.Source) (Config, error) {
+	api, errAPI := config.LoadAPI(src)
+	database, errDatabase := config.LoadDatabase(src)
+	if err := errors.Join(errAPI, errDatabase); err != nil {
+		return Config{}, err
+	}
+	return Config{API: api, Database: database}, nil
+}
+```
+
+## Moving from wire, fx, or dig
+
+[wire](https://github.com/google/wire) generates the code too, and its providers are functions of the same shapes: a
+provider returns `T`, `T, error`, `T, func()`, or `T, func(), error`, and the constructor returns the error and one
+cleanup, as an injector does. What differs is where the wiring is said:
+
+| wire                                           | kanna-di                                                                                                 |
+|------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| an injector function calling `wire.Build`      | a struct marked `//kanna:container`; the directive marks a struct, and on a function does nothing        |
+| `wire.Build`, `wire.NewSet`, and provider sets | none: a provider is found by its type, next to the container or the type (see [Providers](#providers))   |
+| the parameters of an injector                  | `di:"arg"`                                                                                               |
+| `wire.Bind(new(I), new(*T))`                   | `` _ I `di:"with=NewT"` ``                                                                               |
+| `wire.FieldsOf(new(*Deps), "DB")`              | a `Deps` embedded, or declared as `_ *Deps`, whose exported fields serve the container                   |
+| `wire.Value`, `wire.InterfaceValue`            | a function next to the container returning the value                                                     |
+| two values of one type, such as two `string`s  | a type of its own for each, as in wire, but no `string`, `int`, or `[]byte` is handed out by type at all |
+
+A variadic parameter `...T` is passed a value only when the container says where one comes from, and no function is
+looked up for it (see [Providers](#providers)).
+
+[fx](https://github.com/uber-go/fx) and [dig](https://github.com/uber-go/dig) register constructors at run time and call
+them by reflection, so that a missing one is reported at run time. kanna-di reports it when generating, and what it
+writes is the plain Go that calls the constructors, with nothing to import at run time. A value told apart by a name, as
+`name:"…"` does in dig, is a type of its own here. There are no lifecycle hooks: `main` starts the server after the
+constructor returns, and the cleanup closes what the providers opened.
 
 ## Flags
 
