@@ -325,7 +325,7 @@ type base struct {
 
 //kanna:container
 type server struct {
-	_ context.Context `di:"arg"` // なければ newServer(src source.Source, ctx context.Context, dsn DSN)
+	_ context.Context `di:"arg"` // without it, newServer(src source.Source, ctx context.Context, dsn DSN)
 	base
 
 	_ source.Source `di:"arg=src"`
