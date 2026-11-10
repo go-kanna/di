@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"go/types"
 	"path"
+	"strings"
 
 	"github.com/go-kanna/internal/qualifier"
 	"github.com/go-kanna/internal/suggest"
@@ -89,6 +90,12 @@ func (x *index) resolve(
 // qualified returns the package r.pkg names: the one the container's file
 // imports as r.pkg.
 func qualified(r ref, own *types.Package, imports qualifier.Scope) (*types.Package, error) {
+	if namesType(r.pkg, own, imports) {
+		return nil, refError{
+			msg:  fmt.Sprintf("with=%s names a method; with= names a top-level function, and a method cannot be a provider", r),
+			hint: "write a function that calls the method, and choose that",
+		}
+	}
 	if !token.IsIdentifier(r.pkg) {
 		return nil, refError{
 			msg:  fmt.Sprintf("with=%s names its package by its path; name it as the file imports it", r),
@@ -107,6 +114,24 @@ func qualified(r ref, own *types.Package, imports qualifier.Scope) (*types.Packa
 		e.hint = "a function of the container's own package goes without one: with=" + r.fn
 	}
 	return nil, e
+}
+
+// namesType reports whether s, what precedes the function's name, is the
+// receiver of a method expression: (*T), T, or pkg.T.
+func namesType(s string, own *types.Package, imports qualifier.Scope) bool {
+	if strings.ContainsAny(s, "()*") {
+		return true
+	}
+	pkg, name := own, s
+	if q, n, ok := strings.Cut(s, "."); ok {
+		p, err := imports.Lookup(q)
+		if err != nil {
+			return false
+		}
+		pkg, name = p, n
+	}
+	_, ok := pkg.Scope().Lookup(name).(*types.TypeName)
+	return ok
 }
 
 // funcNames lists the functions of pkg that a with= could name: its exported

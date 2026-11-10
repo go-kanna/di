@@ -135,6 +135,22 @@ func TestResolve_Errors(t *testing.T) {
 				"with=slog.Default, importing log/slog as _ if nothing else uses it",
 		},
 		{
+			name: "a method expression",
+			want: "*DB", ref: "(*DB).Clone",
+			msg: "with=(*DB).Clone names a method; with= names a top-level function, and a method cannot be a provider; " +
+				"write a function that calls the method, and choose that",
+		},
+		{
+			name: "a method by its type",
+			want: "*DB", ref: "DB.Clone",
+			msg: "with=DB.Clone names a method",
+		},
+		{
+			name: "a method of a type of another package",
+			want: "any", ref: "postgres.Repo.Find",
+			msg: "with=postgres.Repo.Find names a method",
+		},
+		{
 			name: "two packages imported as _ alike",
 			want: "any", ref: "template.New",
 			msg: "the file imports more than one package named template: html/template, text/template; " +
