@@ -146,6 +146,8 @@ func main() {
 
 `*usecase.RegisterUser` は、型と同じパッケージにある関数 `usecase.NewRegisterUser` から得られます。`*sql.DB` は、コンテナと同じパッケージにある `openDB` から得られます。ドメインのインターフェースである `user.Repository` と `mail.Sender` は、コンテナが指定した実装から得られます。`config.Config` は一度だけ読み込まれ、`openDB` と `sendgrid.NewSender` で共有されます。登録するものはありません。コンストラクタのパラメータが変わると、次の `go generate` がそれを呼び出すコードを変更します。
 
+kanna の生成器を 2 つ以上使うなら、必要な順に動かす [`go tool kanna gen`](https://github.com/go-kanna/kanna) で動かしてください。
+
 ## プロバイダ
 
 プロバイダは、最初の戻り値がパッケージで宣言された型（構造体、インターフェース、その他の名前付き型）またはそのポインタであるトップレベル関数です:
@@ -312,6 +314,30 @@ func NewDeleteTodo() (*DeleteTodo, func(), error) {
 
 コンストラクタの名前は構造体の名前で決まります。`Server` なら `NewServer`、`server` なら `newServer` で、構造体が公開されているときだけ公開されます。設定を先に読み込むなど、別の名前の関数が要るときは、それを手で書いて、生成したコンストラクタを呼びます。
 
+コンストラクタの引数は、それを受け取るフィールドの順に並び、その場で組み立てるコンテナの引数は、自分のものの後ろに、そのコンテナのフィールドの順で続きます。`context.Context` が先頭に来るのは、先頭に宣言したときだけです。Go の慣習どおり `ctx` を先頭にしたいときは、外側のコンテナでほかより先に受け取ります。外側で受け取れば、その場で組み立てるコンテナはもう受け取りません。
+
+```go
+//kanna:container
+type base struct {
+	_   context.Context `di:"arg"`
+	dsn DSN             `di:"arg"`
+}
+
+//kanna:container
+type server struct {
+	_ context.Context `di:"arg"` // なければ newServer(src source.Source, ctx context.Context, dsn DSN)
+	base
+
+	_ source.Source `di:"arg=src"`
+
+	users *handler.User
+}
+```
+
+```go
+func newServer(ctx context.Context, src source.Source, dsn DSN) (*server, func(), error)
+```
+
 ディレクティブにはオプションを指定できます:
 
 | ディレクティブ | 効果 |
@@ -381,6 +407,71 @@ func TestRegisterUser(t *testing.T) {
 このテストは、初回の実行で `newTestServer` が書き出される前からそれを呼び出しています。kanna-di は、読み込んだパッケージを、これから書き出す内容を組み込んだ状態でもう一度型チェックします。そのため、まだ存在しないコンストラクタや、これから受け取るものや返すものが変わるコンストラクタの呼び出しがあっても止まりません。その時点で間違っているものは報告され、何も書き出されません。これから書き出すコンストラクタと合わない呼び出しや、コンストラクタがないために隠れていた間違い（コンストラクタが返すものにないメソッドなど）です。
 
 テスト用コンテナのパッケージの関数には、その `_test.go` ファイルの関数も含まれます。`_test.go` ファイルで宣言されたプロバイダは、そのパッケージのテストにのみコンパイルされるので、そのパッケージのテスト（パッケージ内と外部の両方）のコンテナにだけ値を提供します。1 つのディレクトリでは、2 つのテストパッケージのどちらか一方にしかテスト用コンテナを置けません。両方に置くと `di_gen_test.go` を共有することになるからです。
+
+## kanna-config の設定
+
+[kanna-config](https://github.com/go-kanna/config) は、設定の構造体 `X` の隣に `LoadX(src source.Source) (X, error)` を書きます。これは型の隣にある関数なので、`X` のプロバイダになります。設定をまとめるコンテナは、ソースを引数として受け取ります。型から名前を付けると `source` の import に譲って `source2` になるので、名前を明示します:
+
+```go
+//kanna:container returns=Config
+type Config struct {
+	_ source.Source `di:"arg=src"`
+
+	API      config.API
+	Database config.Database
+}
+```
+
+```go
+func NewConfig(src source.Source) (Config, error) {
+	api, err := config.LoadAPI(src)
+	if err != nil {
+		return Config{}, err
+	}
+	database, err := config.LoadDatabase(src)
+	if err != nil {
+		return Config{}, err
+	}
+
+	return Config{
+		API:      api,
+		Database: database,
+	}, nil
+}
+```
+
+設定が要るコンテナは、`` _ Config `di:"arg=cfg"` `` のようにそれを受け取ります。そのフィールドがプロバイダに使われるので、`config.Database` がデータベースを開く関数に届きます。
+
+ほかのプロバイダと同じく、コンストラクタは最初に失敗した `LoadX` の誤りを返し、その後の `LoadX` は呼びません。`API_PORT` と `DATABASE_WRITER_URL` の両方が誤っていても、報告されるのは `API_PORT` だけです。誤った設定をまとめて報告したいときは、コンテナの代わりに関数を手で書き、それぞれの `LoadX` を呼んで誤りをつなげます:
+
+```go
+func NewConfig(src source.Source) (Config, error) {
+	api, errAPI := config.LoadAPI(src)
+	database, errDatabase := config.LoadDatabase(src)
+	if err := errors.Join(errAPI, errDatabase); err != nil {
+		return Config{}, err
+	}
+	return Config{API: api, Database: database}, nil
+}
+```
+
+## wire、fx、dig から移る
+
+[wire](https://github.com/google/wire) もコードを生成し、プロバイダの形も同じです。プロバイダは `T`、`T, error`、`T, func()`、`T, func(), error` を返し、コンストラクタは injector と同じく、誤りと 1 つのクリーンアップを返します。違うのは、配線をどこで言うかです:
+
+| wire | kanna-di |
+|---|---|
+| `wire.Build` を呼ぶ injector 関数 | `//kanna:container` を付けた構造体。ディレクティブは構造体に付けるもので、関数に付けても何も起きない |
+| `wire.Build`、`wire.NewSet`、プロバイダセット | なし。プロバイダは型で、コンテナの隣か型の隣から探す（[プロバイダ](#プロバイダ)を参照） |
+| injector の引数 | `di:"arg"` |
+| `wire.Bind(new(I), new(*T))` | `` _ I `di:"with=NewT"` `` |
+| `wire.FieldsOf(new(*Deps), "DB")` | `Deps` を埋め込むか `_ *Deps` と宣言する。その公開フィールドがコンテナに使われる |
+| `wire.Value`、`wire.InterfaceValue` | コンテナの隣に、その値を返す関数を書く |
+| 同じ型の 2 つの値（2 つの `string` など） | wire と同じく、それぞれに型を与える。ただし `string`、`int`、`[]byte` はそもそも型では配らない |
+
+可変長パラメータ `...T` には、コンテナが出どころを言っているときだけ値を渡し、関数は探しません（[プロバイダ](#プロバイダ)を参照）。
+
+[fx](https://github.com/uber-go/fx) と [dig](https://github.com/uber-go/dig) は、実行時にコンストラクタを登録し、リフレクションで呼ぶので、足りないものは実行時に報告されます。kanna-di は生成時に報告し、書き出すのはコンストラクタを呼ぶ素の Go で、実行時に import するものはありません。dig の `name:"…"` のように名前で区別する値は、ここでは型を分けます。ライフサイクルのフックはありません。サーバはコンストラクタが返したあとに `main` が起動し、プロバイダが開いたものはクリーンアップが閉じます。
 
 ## フラグ
 
