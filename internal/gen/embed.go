@@ -76,6 +76,9 @@ func (pl *planner) collect(c container, top bool, path []string) {
 
 	for _, f := range c.fields {
 		if f.zero() {
+			if f.source == fromType {
+				pl.zeros[typeKey(f.Type)] = true
+			}
 			continue
 		}
 		via := strings.Join(path, ".") + "." + f.Name
@@ -135,7 +138,7 @@ func (pl *planner) fill(c container, owner string, top bool, path []string) []as
 			case e != nil:
 				steps[i] = pl.embedStep(e)
 			default:
-				steps[i] = pl.need(f.Type, []string{via}, false)
+				steps[i] = pl.need(f.Type, []string{via})
 			}
 		}
 	}
@@ -193,7 +196,7 @@ func (pl *planner) embedStep(e *embedded) int {
 	}
 	root := pl.root
 	pl.root, e.busy = e.f.Field, true
-	e.step = pl.need(e.f.Type, []string{e.via}, false)
+	e.step = pl.need(e.f.Type, []string{e.via})
 	pl.root, e.busy, e.done = root, false, true
 	return e.step
 }

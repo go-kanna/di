@@ -166,13 +166,15 @@ any other named type) or a pointer to one:
 | `T, func()`        | returns a cleanup too; see [Cleanup](#cleanup)     |
 | `T, func(), error` | both                                               |
 
-A variadic parameter `...T` is passed the container's value of `T`, found as that of any other parameter is, or left
-empty when nothing provides `T`. A provider is called once per constructor, and everything that needs its result
-shares it. A type without a name of its own, such as `string`, `int` or `[]byte`, is never handed out by type, since its
-type does not tell one value from another, a DSN from an address: a function returning one is no provider, and neither
-`di:"arg"`, `with=`, nor a field of a struct the container embeds serves one. Give such a value a type of its own, such
-as `type DSN string`. A must variant beside the function it wraps, `MustNewDeps` beside `NewDeps`, is passed over for
-that function, so that the error reaches the constructor instead of a panic.
+A variadic parameter `...T` is passed a value of `T` only when the container says where one comes from: an argument
+(`di:"arg"`), a provider it chooses (`di:"with=..."`), what it embeds, or, for a struct type without fields, a field of
+the type. It is otherwise left empty, and no function is looked up for it, so that what a call gets is read off the
+container (see [Choosing a provider](#choosing-a-provider)). A provider is called once per constructor, and everything
+that needs its result shares it. A type without a name of its own, such as `string`, `int` or `[]byte`, is never handed
+out by type, since its type does not tell one value from another, a DSN from an address: a function returning one is no
+provider, and neither `di:"arg"`, `with=`, nor a field of a struct the container embeds serves one. Give such a value a
+type of its own, such as `type DSN string`. A must variant beside the function it wraps, `MustNewDeps` beside `NewDeps`,
+is passed over for that function, so that the error reaches the constructor instead of a panic.
 
 For each type it needs, kanna-di takes the first of these that has one:
 
@@ -234,8 +236,8 @@ named field, `with=` also stores the value; on `_`, it only chooses, and a struc
 [Containers](#containers)).
 
 A variadic parameter takes what `with=` chooses as well. A repository that kanna-orm generates takes its clock as an
-option, `NewOrder(db DBTX, opts ...option.Option)`, and a container passes one to every repository it builds, so that
-which clock they use is said where they are assembled:
+option, `NewOrder(db DBTX, opts ...option.Option)`, and a container choosing one passes it to every repository it
+builds, so that which clock they use is said where they are assembled:
 
 ```go
 func clockOption() option.Option { return option.WithClock(appClock{}) }
@@ -251,6 +253,24 @@ type server struct {
 ```go
 	opts := clockOption()
 	orders := postgres.NewOrder(db, opts)
+```
+
+A container holds one value of a type, so several options are joined into one, as
+`option.Join(option.WithClock(appClock{}), option.WithHook(audit{}))` does. For one repository to get options of its
+own, write it a constructor next to the container, which takes the container's option too, and choose it:
+
+```go
+func newOrders(db postgres.DBTX, opts ...option.Option) postgres.Order {
+	return postgres.NewOrder(db, append(opts, option.WithHook(audit{}))...)
+}
+
+//kanna:container
+type server struct {
+	_ option.Option  `di:"with=clockOption"`
+	_ postgres.Order `di:"with=newOrders"`
+
+	users *handler.User
+}
 ```
 
 A container hands out one value of a type, to everything that needs one, so two fields of a type cannot each have a

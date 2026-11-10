@@ -587,9 +587,30 @@ func TestPlans_Variadic(t *testing.T) {
 			want: []string{"newC(deps Deps) *c", "clock := deps.Clock", "repo := newRepo(clock)", "c{repo: repo, Deps: deps}"},
 		},
 		{
-			name:  "a function found",
-			decls: "func clockOption() Option { return nil }",
-			want:  []string{"newC() *c", "opts := clockOption()", "repo := newRepo(opts)", "c{repo: repo}"},
+			name:  "a function found is not passed",
+			decls: "func clockOption() Option { return nil }\nfunc hookOption() Option { return nil }",
+			want:  []string{"newC() *c", "repo := newRepo()", "c{repo: repo}"},
+		},
+		{
+			name:  "nor one another call needs",
+			decls: "func clockOption() Option { return nil }\nfunc newStore(o Option) *Store { return nil }",
+			body:  "store *Store",
+			want: []string{
+				"newC() *c", "repo := newRepo()", "o := clockOption()", "store := newStore(o)",
+				"c{repo: repo, store: store}",
+			},
+		},
+		{
+			name:  "a struct without fields the container has a field of",
+			decls: "func newTicker(...Tick) *Ticker { return nil }",
+			body:  "tick Tick\nticker *Ticker",
+			want:  []string{"newC() *c", "repo := newRepo()", "ticker := newTicker(Tick{})", "c{repo: repo, ticker: ticker}"},
+		},
+		{
+			name:  "a struct without fields the container does not have",
+			decls: "func newTicker(...Tick) *Ticker { return nil }",
+			body:  "ticker *Ticker",
+			want:  []string{"newC() *c", "repo := newRepo()", "ticker := newTicker()", "c{repo: repo, ticker: ticker}"},
 		},
 		{
 			name:  "a type without a name of its own is not handed out",
@@ -598,19 +619,17 @@ func TestPlans_Variadic(t *testing.T) {
 			want:  []string{"newC() *c", "repo := newRepo()", "names := newNames()", "c{repo: repo, names: names}"},
 		},
 		{
-			name:  "a function found that cannot be called",
+			name:  "a chosen function that cannot be called",
 			decls: "func clockOption(c *Clock) Option { return nil }",
-			diag:  "x.go:14:2: error: nothing provides *Clock, which clockOption needs\n  via c.repo → newRepo → clockOption",
+			body:  "_ Option `di:\"with=clockOption\"`",
+			diag:  "x.go:16:2: error: nothing provides *Clock, which clockOption needs\n  via c.repo → newRepo → clockOption",
 		},
 		{
-			name:  "a function found that takes what it returns",
+			// As io.MultiWriter would: it takes ...io.Writer.
+			name:  "a chosen function taking what it returns",
 			decls: "func chain(opts ...Option) Option { return nil }",
-			diag:  "x.go:14:2: error: dependency cycle: chain → chain",
-		},
-		{
-			name:  "two functions found",
-			decls: "func clockOption() Option { return nil }\nfunc hookOption() Option { return nil }",
-			diag:  "x.go:14:2: error: 2 functions in package test return Option",
+			body:  "_ Option `di:\"with=chain\"`",
+			diag:  "x.go:16:2: error: dependency cycle: chain → chain",
 		},
 	}
 	for _, tt := range tests {
@@ -625,6 +644,8 @@ type (
 	Store  struct{ _ int }
 	Names  struct{ _ int }
 	Clock  struct{ _ int }
+	Ticker struct{ _ int }
+	Tick   struct{}
 	Deps   struct{ Clock Option }
 )
 

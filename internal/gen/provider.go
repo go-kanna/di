@@ -21,7 +21,7 @@ type provider struct {
 	params []types.Type
 
 	// variadic is the element type of the variadic parameter, or nil. A call
-	// passes it the one value the container has of the type, or nothing.
+	// passes it the value the container declares of the type, or nothing.
 	variadic types.Type
 
 	// errs and cleanup report that the function also returns an error, or a

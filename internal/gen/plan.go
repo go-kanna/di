@@ -158,6 +158,10 @@ type planner struct {
 	// chose, by type.
 	innerChosen map[string][]innerChoice
 
+	// zeros holds the structs without fields that the container, or one it
+	// builds in place, has a field of, by type.
+	zeros map[string]bool
+
 	// root is the field whose value is being worked out, where a diagnostic
 	// about any of its dependencies is reported.
 	root scan.Field
@@ -191,6 +195,7 @@ func planOf(w *world, c container) (plan, []diag.Diag, []wait) {
 		byType:      make(map[string]int),
 		byCall:      make(map[string]int),
 		innerChosen: make(map[string][]innerChoice),
+		zeros:       make(map[string]bool),
 		used:        make(map[string]bool),
 	}
 
@@ -222,20 +227,16 @@ func (pl *planner) choose(f field) {
 	pl.chosen[typeKey(f.Type)] = &p
 }
 
-// absent is what find returns for an optional need that nothing provides.
-const absent = -2
-
 // need returns the step that makes a value of type t, or -1 when there is
 // none, having said why. via is the path that led to the need, from the field
-// on. An optional need, a variadic parameter's, that nothing provides gets
-// absent instead, with nothing said.
-func (pl *planner) need(t types.Type, via []string, optional bool) int {
+// on.
+func (pl *planner) need(t types.Type, via []string) int {
 	k := typeKey(t)
 	pl.used[k] = true
 	if s, ok := pl.byType[k]; ok {
 		return s
 	}
-	s := pl.find(t, k, via, optional)
+	s := pl.find(t, k, via)
 	if s >= 0 && !pl.busyWith(k) {
 		pl.byType[k] = s
 	}
@@ -250,7 +251,7 @@ func (pl *planner) busyWith(k string) bool {
 }
 
 // find works out the step for t, looking in the order the README gives.
-func (pl *planner) find(t types.Type, k string, via []string, optional bool) int {
+func (pl *planner) find(t types.Type, k string, via []string) int {
 	if i, ok := pl.args[k]; ok {
 		return pl.add(step{kind: paramStep, typ: t, name: pl.pl.params[i].name, param: i})
 	}
@@ -278,9 +279,6 @@ func (pl *planner) find(t types.Type, k string, via []string, optional bool) int
 
 	switch len(ps) {
 	case 0:
-		if optional {
-			return absent
-		}
 		pl.missing(t, via, append(near, pl.nearly(t)...))
 		return -1
 	case 1:
@@ -358,25 +356,34 @@ func (pl *planner) call(p provider, via []string) int {
 	via = append(slices.Clip(via), name)
 	args := make([]int, 0, len(p.params)+1)
 	for _, t := range p.params {
-		s := pl.need(t, via, false)
+		s := pl.need(t, via)
 		if s < 0 {
 			return -1
 		}
 		args = append(args, s)
 	}
-	if p.variadic != nil {
-		switch s := pl.need(p.variadic, via, true); {
-		case s == absent:
-		case s < 0:
+	if p.variadic != nil && pl.declares(p.variadic) {
+		s := pl.need(p.variadic, via)
+		if s < 0 {
 			return -1
-		default:
-			args = append(args, s)
 		}
+		args = append(args, s)
 	}
 
 	s := pl.add(step{kind: callStep, typ: p.result, p: p, args: args})
 	pl.byCall[key] = s
 	return s
+}
+
+// declares reports whether the container says where a value of t comes from:
+// it takes or chooses one, what it embeds holds one, or it has a field of t,
+// a struct without fields. A variadic parameter is passed only such a value,
+// so that what a call gets is read off the container, and a function found
+// never fills one in.
+func (pl *planner) declares(t types.Type) bool {
+	k := typeKey(t)
+	return hasKey(pl.args, k) || hasKey(pl.chosen, k) || len(pl.innerChosen[k]) > 0 || pl.zeros[k] ||
+		slices.ContainsFunc(pl.embeds, func(e *embedded) bool { return hasKey(e.byType, k) })
 }
 
 func (pl *planner) add(s step) int {
