@@ -222,16 +222,20 @@ func (pl *planner) choose(f field) {
 	pl.chosen[typeKey(f.Type)] = &p
 }
 
+// absent is what find returns for an optional need that nothing provides.
+const absent = -2
+
 // need returns the step that makes a value of type t, or -1 when there is
 // none, having said why. via is the path that led to the need, from the field
-// on.
-func (pl *planner) need(t types.Type, via []string) int {
+// on. An optional need, a variadic parameter's, that nothing provides gets
+// absent instead, with nothing said.
+func (pl *planner) need(t types.Type, via []string, optional bool) int {
 	k := typeKey(t)
 	pl.used[k] = true
 	if s, ok := pl.byType[k]; ok {
 		return s
 	}
-	s := pl.find(t, k, via)
+	s := pl.find(t, k, via, optional)
 	if s >= 0 && !pl.busyWith(k) {
 		pl.byType[k] = s
 	}
@@ -246,7 +250,7 @@ func (pl *planner) busyWith(k string) bool {
 }
 
 // find works out the step for t, looking in the order the README gives.
-func (pl *planner) find(t types.Type, k string, via []string) int {
+func (pl *planner) find(t types.Type, k string, via []string, optional bool) int {
 	if i, ok := pl.args[k]; ok {
 		return pl.add(step{kind: paramStep, typ: t, name: pl.pl.params[i].name, param: i})
 	}
@@ -274,6 +278,9 @@ func (pl *planner) find(t types.Type, k string, via []string) int {
 
 	switch len(ps) {
 	case 0:
+		if optional {
+			return absent
+		}
 		pl.missing(t, via, append(near, pl.nearly(t)...))
 		return -1
 	case 1:
@@ -349,10 +356,21 @@ func (pl *planner) call(p provider, via []string) int {
 	defer func() { pl.calling = pl.calling[:len(pl.calling)-1] }()
 
 	via = append(slices.Clip(via), name)
-	args := make([]int, len(p.params))
-	for i, t := range p.params {
-		if args[i] = pl.need(t, via); args[i] < 0 {
+	args := make([]int, 0, len(p.params)+1)
+	for _, t := range p.params {
+		s := pl.need(t, via, false)
+		if s < 0 {
 			return -1
+		}
+		args = append(args, s)
+	}
+	if p.variadic != nil {
+		switch s := pl.need(p.variadic, via, true); {
+		case s == absent:
+		case s < 0:
+			return -1
+		default:
+			args = append(args, s)
 		}
 	}
 

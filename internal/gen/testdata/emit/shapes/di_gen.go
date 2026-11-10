@@ -96,3 +96,16 @@ func newConfigured(config2 config.Config, ctx context.Context) *configured {
 		ctx:    ctx,
 	}
 }
+
+// newOptioned initializes dependencies and constructs optioned.
+func newOptioned() *optioned {
+	db := newDB()
+	opts := withClock()
+	repo := newRepo(db, opts)
+	store := newStore(db, opts)
+
+	return &optioned{
+		repo:  repo,
+		store: store,
+	}
+}

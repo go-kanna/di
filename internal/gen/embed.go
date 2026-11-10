@@ -135,7 +135,7 @@ func (pl *planner) fill(c container, owner string, top bool, path []string) []as
 			case e != nil:
 				steps[i] = pl.embedStep(e)
 			default:
-				steps[i] = pl.need(f.Type, []string{via})
+				steps[i] = pl.need(f.Type, []string{via}, false)
 			}
 		}
 	}
@@ -193,7 +193,7 @@ func (pl *planner) embedStep(e *embedded) int {
 	}
 	root := pl.root
 	pl.root, e.busy = e.f.Field, true
-	e.step = pl.need(e.f.Type, []string{e.via})
+	e.step = pl.need(e.f.Type, []string{e.via}, false)
 	pl.root, e.busy, e.done = root, false, true
 	return e.step
 }

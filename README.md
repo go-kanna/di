@@ -166,7 +166,8 @@ any other named type) or a pointer to one:
 | `T, func()`        | returns a cleanup too; see [Cleanup](#cleanup)     |
 | `T, func(), error` | both                                               |
 
-A variadic parameter is left empty. A provider is called once per constructor, and everything that needs its result
+A variadic parameter `...T` is passed the container's value of `T`, found as that of any other parameter is, or left
+empty when nothing provides `T`. A provider is called once per constructor, and everything that needs its result
 shares it. A type without a name of its own, such as `string`, `int` or `[]byte`, is never handed out by type, since its
 type does not tell one value from another, a DSN from an address: a function returning one is no provider, and neither
 `di:"arg"`, `with=`, nor a field of a struct the container embeds serves one. Give such a value a type of its own, such
@@ -231,6 +232,26 @@ with what to import.
 The provider's result only has to be assignable to the type, which is how an interface gets its implementation. On a
 named field, `with=` also stores the value; on `_`, it only chooses, and a struct's fields then serve the container (see
 [Containers](#containers)).
+
+A variadic parameter takes what `with=` chooses as well. A repository that kanna-orm generates takes its clock as an
+option, `NewOrder(db DBTX, opts ...option.Option)`, and a container passes one to every repository it builds, so that
+which clock they use is said where they are assembled:
+
+```go
+func clockOption() option.Option { return option.WithClock(appClock{}) }
+
+//kanna:container
+type server struct {
+	_ option.Option `di:"with=clockOption"`
+
+	users *handler.User
+}
+```
+
+```go
+	opts := clockOption()
+	orders := postgres.NewOrder(db, opts)
+```
 
 A container hands out one value of a type, to everything that needs one, so two fields of a type cannot each have a
 provider, or be taken as two parameters. For a primary and a replica `*sql.DB`, give each a type of its own, such as
