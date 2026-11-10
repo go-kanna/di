@@ -174,7 +174,9 @@ that needs its result shares it. A type without a name of its own, such as `stri
 out by type, since its type does not tell one value from another, a DSN from an address: a function returning one is no
 provider, and neither `di:"arg"`, `with=`, nor a field of a struct the container embeds serves one. Give such a value a
 type of its own, such as `type DSN string`. A must variant beside the function it wraps, `MustNewDeps` beside `NewDeps`,
-is passed over for that function, so that the error reaches the constructor instead of a panic.
+is passed over for that function, so that the error reaches the constructor instead of a panic. A generic function is no
+provider either, since nothing would choose its type arguments; when nothing else provides the type, the error names the
+function and says why.
 
 For each type it needs, kanna-di takes the first of these that has one:
 

@@ -312,7 +312,8 @@ func (pl *planner) candidates(pkg *types.Package, t types.Type, own bool) ([]pro
 		switch {
 		case pl.w.output[p.pos.Filename]:
 		case p.bad != "":
-			near = append(near, fmt.Sprintf("%s returns %s but cannot be a provider: %s", name, pl.typeString(t), p.bad))
+			near = append(near, fmt.Sprintf("%s returns %s but cannot be a provider: %s",
+				name, pl.typeString(p.result), p.bad))
 		case !own && !p.fn.Exported():
 			near = append(near, fmt.Sprintf("%s returns %s but is not exported", name, pl.typeString(t)))
 		case !p.serves(pl.own, pl.c.test):

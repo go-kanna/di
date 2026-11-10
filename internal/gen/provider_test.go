@@ -68,6 +68,7 @@ func fakeRepo() Repo { return nil }
 		"FromAlias() Alias",
 		"IntBox() *Box[int]",
 		"Reader() io.Reader",
+		"Generic: it is generic, and nothing would choose its type arguments",
 		"Closer: a cleanup must be a func(), with neither parameters nor results",
 		"Twice: what follows its first result must be a func() cleanup, an error, or both in that order",
 		"Pair: what follows its first result must be a func() cleanup, an error, or both in that order",

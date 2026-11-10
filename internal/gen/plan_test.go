@@ -225,6 +225,13 @@ func TestPlans_Diagnostics(t *testing.T) {
 				"a cleanup must be a func(), with neither parameters nor results\n",
 		},
 		{
+			name:  "a generic function",
+			decls: "type Box[T any] struct{ v T }\nfunc newBox[T any]() *Box[T] { return nil }",
+			body:  "box *Box[int]",
+			want: "x.go:13:2: error: nothing provides *Box[int]\n" +
+				"  newBox returns *Box[T] but cannot be a provider: it is generic, and nothing would choose its type arguments\n",
+		},
+		{
 			name:  "a provider of the pointer",
 			decls: "func newDB() *DB { return nil }",
 			body:  "db DB",

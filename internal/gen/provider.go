@@ -40,6 +40,8 @@ type provider struct {
 	bad string
 }
 
+const genericBad = "it is generic, and nothing would choose its type arguments"
+
 // index finds the providers in a package by the type they provide, reading
 // each package once, when it is first asked about.
 type index struct {
@@ -52,33 +54,44 @@ func newIndex(fset *token.FileSet) *index {
 }
 
 // lookup returns the functions of pkg that return t, in the order they are
-// declared, the bad ones included.
+// declared, the bad ones included, and then the generic functions returning
+// another instance of its type.
 func (x *index) lookup(pkg *types.Package, t types.Type) []provider {
 	byType, ok := x.pkgs[pkg]
 	if !ok {
 		byType = x.read(pkg)
 		x.pkgs[pkg] = byType
 	}
-	return byType[typeKey(t)]
+	ps := byType[typeKey(t)]
+	if k := originKey(t); k != typeKey(t) {
+		ps = slices.Concat(ps, byType[k])
+	}
+	return ps
 }
 
 // read sorts the top-level functions of pkg by the type they return.
 //
 // A must variant is left out: MustNewDeps beside NewDeps returns the same type,
 // and calling NewDeps instead lets its error reach the constructor rather than
-// panic. So is a generic function, whose type arguments nothing could choose.
+// panic. A generic function is kept as a bad one, by the generic type it
+// returns, to say why it is not called.
 func (x *index) read(pkg *types.Package) map[string][]provider {
 	scope := pkg.Scope()
 	byType := make(map[string][]provider)
 	for _, name := range scope.Names() {
 		fn, ok := scope.Lookup(name).(*types.Func)
-		if !ok || fn.Signature().TypeParams().Len() > 0 || isMustOf(scope, fn) {
+		if !ok || isMustOf(scope, fn) {
 			continue
 		}
-		if p, ok := x.providerOf(fn); ok {
-			k := typeKey(p.result)
-			byType[k] = append(byType[k], p)
+		p, ok := x.providerOf(fn)
+		if !ok {
+			continue
 		}
+		k := typeKey(p.result)
+		if fn.Signature().TypeParams().Len() > 0 {
+			p.bad, k = genericBad, originKey(p.result)
+		}
+		byType[k] = append(byType[k], p)
 	}
 
 	for _, ps := range byType {
@@ -206,6 +219,19 @@ func typeKey(t types.Type) string {
 	t = types.Unalias(t)
 	if p, ok := t.(*types.Pointer); ok {
 		return "*" + typeKey(p.Elem())
+	}
+	return types.TypeString(t, (*types.Package).Path)
+}
+
+// originKey is typeKey of the generic type t, or what t points to, is an
+// instance of.
+func originKey(t types.Type) string {
+	t = types.Unalias(t)
+	if p, ok := t.(*types.Pointer); ok {
+		return "*" + originKey(p.Elem())
+	}
+	if n, ok := t.(*types.Named); ok {
+		t = n.Origin()
 	}
 	return types.TypeString(t, (*types.Package).Path)
 }

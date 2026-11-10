@@ -59,8 +59,7 @@ func (x *index) resolve(
 	case pkg != own && !fn.Exported():
 		return provider{}, refError{msg: name + " is not exported"}
 	case fn.Signature().TypeParams().Len() > 0:
-		return provider{}, refError{msg: name +
-			" cannot be a provider: it is generic, and nothing would choose its type arguments"}
+		return provider{}, refError{msg: name + " cannot be a provider: " + genericBad}
 	}
 
 	p, ok := x.providerOf(fn)
