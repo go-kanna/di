@@ -264,6 +264,13 @@ func TestPlans_Diagnostics(t *testing.T) {
 				"  log/slog is not in your module, so kanna-di does not look there\n" + hint,
 		},
 		{
+			// The only provider io has, MultiWriter, would write nowhere.
+			name: "a type of another module only a variadic function returns",
+			body: "w io.Writer",
+			want: "x.go:13:2: error: nothing provides io.Writer\n" +
+				"  io is not in your module, so kanna-di does not look there\n" + hint + "\n",
+		},
+		{
 			name:  "two providers",
 			decls: "func newUsers() *Users { return nil }\nfunc otherUsers() *Users { return nil }",
 			body:  "users *Users",
@@ -353,13 +360,13 @@ func TestPlans_Diagnostics(t *testing.T) {
 
 			files := map[string]string{"x.go": `package test
 
-import "log/slog"
+import ("io"; "log/slog")
 
 type (DB struct{ dsn string }; Users struct{}; App struct{}; Env string; Repo interface{ Find() }; impl struct{})
 
 func (impl) Find() {}
 
-var _ *slog.Logger
+var (_ *slog.Logger; _ io.Writer)
 
 //kanna:container
 type c struct {
