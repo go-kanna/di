@@ -130,7 +130,7 @@ func TestCommand_RefusesADirectiveOnAnythingButAStruct(t *testing.T) {
 	for _, tc := range []struct {
 		name, decl, shape string
 	}{
-		{"named basic", "type level int", "a type other than a struct or an interface"},
+		{"named basic", "type level int", "an int type"},
 		{"alias", "type level = string", "a type alias"},
 		{"interface", "type runner interface{ Run() }", "an interface type"},
 		{"func", "func newThing() int { return 1 }", "a function"},
