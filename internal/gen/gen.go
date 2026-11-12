@@ -135,6 +135,7 @@ func generate(
 		local:      func(p *types.Package) bool { return hasKey(module, p.Path()) },
 		dir:        dir,
 		containers: make(map[string]container, len(cs)),
+		marked:     markedIn(set.Fset, set.Packages),
 		output:     written,
 	}
 	for _, c := range cs {
