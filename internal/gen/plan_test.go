@@ -710,7 +710,8 @@ func TestPlans_Variadic(t *testing.T) {
 				"  chain (x.go:22:6)\n" +
 				"  via c.repo → newRepo\n" +
 				"  chain is passed the Option the container declares for its ...Option, which is the one chain itself returns\n" +
-				"  write a function that takes no ...Option and returns chain(...) with the values to pass, and choose it with di:\"with=...\"",
+				"  write a function that takes no ...Option and returns chain(...) with the values to pass, " +
+				"and choose it with di:\"with=...\"",
 		},
 		{
 			name:  "the function a chosen one stands for",

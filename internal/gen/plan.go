@@ -359,8 +359,8 @@ func (pl *planner) call(p provider, via []string) int {
 			d = d.WithHints(
 				fmt.Sprintf("%s is passed the %s the container declares for its ...%s, which is the one %s itself returns",
 					name, ts, ts, name),
-				fmt.Sprintf(`write a function that takes no ...%s and returns %s(...) with the values to pass, and choose it with di:"with=..."`,
-					ts, name))
+				fmt.Sprintf("write a function that takes no ...%s and returns %s(...) with the values to pass, "+
+					`and choose it with di:"with=..."`, ts, name))
 		}
 		pl.diags = append(pl.diags, d)
 		return -1
