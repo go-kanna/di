@@ -176,10 +176,13 @@ type planner struct {
 
 // callFrame is a call being worked out, and the path that led to it. key is
 // the function's full name, and name how the container's source names it.
+// variadic is the element type of its variadic parameter while the argument
+// for it is worked out.
 type callFrame struct {
 	key, name string
 	pos       token.Position
 	via       []string
+	variadic  types.Type
 }
 
 // planOf works out how the constructor of c builds it, in w. A plan that has
@@ -351,6 +354,14 @@ func (pl *planner) call(p provider, via []string) int {
 		if outer := pl.calling[i].via; len(outer) > 1 {
 			d = d.WithHints("via " + strings.Join(outer, " → "))
 		}
+		if t := pl.calling[i].variadic; t != nil && i == len(pl.calling)-1 {
+			ts := pl.typeString(t)
+			d = d.WithHints(
+				fmt.Sprintf("%s is passed the %s the container declares for its ...%s, which is the one %s itself returns",
+					name, ts, ts, name),
+				fmt.Sprintf("write a function that takes no ...%s and returns %s(...) with the values to pass, "+
+					`and choose it with di:"with=..."`, ts, name))
+		}
 		pl.diags = append(pl.diags, d)
 		return -1
 	}
@@ -368,6 +379,7 @@ func (pl *planner) call(p provider, via []string) int {
 		args = append(args, s)
 	}
 	if p.variadic != nil && pl.declares(p.variadic) {
+		pl.calling[len(pl.calling)-1].variadic = p.variadic
 		s := pl.need(p.variadic, via)
 		if s < 0 {
 			return -1

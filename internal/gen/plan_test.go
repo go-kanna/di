@@ -698,14 +698,40 @@ func TestPlans_Variadic(t *testing.T) {
 			name:  "a chosen function that cannot be called",
 			decls: "func clockOption(c *Clock) Option { return nil }",
 			body:  "_ Option `di:\"with=clockOption\"`",
-			diag:  "x.go:16:2: error: nothing provides *Clock, which clockOption needs\n  via c.repo → newRepo → clockOption",
+			diag: "x.go:16:2: error: nothing provides *Clock, which clockOption needs\n  via c.repo → newRepo → clockOption\n" +
+				"  return one from a function in package test, take it with di:\"arg\", or choose a provider with di:\"with=...\"",
 		},
 		{
 			// As io.MultiWriter would: it takes ...io.Writer.
 			name:  "a chosen function taking what it returns",
 			decls: "func chain(opts ...Option) Option { return nil }",
 			body:  "_ Option `di:\"with=chain\"`",
-			diag:  "x.go:16:2: error: dependency cycle: chain → chain",
+			diag: "x.go:16:2: error: dependency cycle: chain → chain\n" +
+				"  chain (x.go:22:6)\n" +
+				"  via c.repo → newRepo\n" +
+				"  chain is passed the Option the container declares for its ...Option, which is the one chain itself returns\n" +
+				"  write a function that takes no ...Option and returns chain(...) with the values to pass, " +
+				"and choose it with di:\"with=...\"",
+		},
+		{
+			name:  "the function a chosen one stands for",
+			decls: "func chain(opts ...Option) Option { return nil }\nfunc options() Option { return chain(nil) }",
+			body:  "_ Option `di:\"with=options\"`",
+			want:  []string{"newC() *c", "opts := options()", "repo := newRepo(opts)", "c{repo: repo}"},
+		},
+		{
+			name:  "a cycle through a parameter that is not variadic",
+			decls: "func chain(c *Clock, opts ...Option) Option { return nil }\nfunc newClock(o Option) *Clock { return nil }",
+			body:  "_ Option `di:\"with=chain\"`",
+			diag: "x.go:16:2: error: dependency cycle: chain → newClock → chain\n" +
+				"  chain (x.go:22:6)\n  newClock (x.go:23:6)\n  via c.repo → newRepo",
+		},
+		{
+			name:  "a cycle through a variadic parameter, back to another function",
+			decls: "func clockOption(r *Repo) Option { return nil }",
+			body:  "_ Option `di:\"with=clockOption\"`",
+			diag: "x.go:16:2: error: dependency cycle: newRepo → clockOption → newRepo\n" +
+				"  newRepo (x.go:20:6)\n  clockOption (x.go:22:6)",
 		},
 	}
 	for _, tt := range tests {
@@ -735,8 +761,8 @@ func newRepo(opts ...Option) *Repo { return nil }
 
 ` + tt.decls + "\n"})
 			if tt.diag != "" {
-				if !strings.Contains(strings.Join(diags, "\n"), tt.diag) {
-					t.Errorf("diagnostics =\n%s\nwant one to say\n%s", strings.Join(diags, "\n"), tt.diag)
+				if got := strings.Join(diags, "\n"); got != tt.diag {
+					t.Errorf("diagnostics =\n%s\nwant\n%s", got, tt.diag)
 				}
 				return
 			}
