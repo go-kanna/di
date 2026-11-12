@@ -4,8 +4,10 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/go-kanna/internal/deps"
+	"github.com/go-kanna/internal/directive"
 	"github.com/go-kanna/internal/packages"
 	"github.com/go-kanna/internal/qualifier"
 	"github.com/go-kanna/internal/scan"
@@ -13,6 +15,9 @@ import (
 
 // reportDeps tells what a run in dir reads and writes. A with= names a package
 // that nothing imports before the generated code does.
+//
+// It reads the directives and tags alone: a container whose types resolve only
+// once another generator has run still has its file and constructor written.
 func reportDeps(dir string, cfg config, patterns []string) (deps.Report, error) {
 	set, err := packages.Load(patterns, packages.Config{
 		Dir: dir, Tags: cfg.tags, Tests: true, Regenerated: []string{outputFile, testOutputFile},
@@ -22,23 +27,36 @@ func reportDeps(dir string, cfg config, patterns []string) (deps.Report, error) 
 	}
 
 	r := deps.Report{Packages: set.Paths(), Tests: true}
-	cs, _ := containers(set.Fset, scan.Structs(set.Packages), dir, outputOf(set.Packages))
-	r.Declares = slices.Collect(maps.Keys(constructors(cs)))
-	for _, c := range cs {
+	declares := make(map[string]bool)
+	for _, s := range scan.Structs(set.Packages) {
+		d, _ := directive.Find(set.Fset, s.Doc, directiveKey)
+		if !d.Found {
+			continue
+		}
 		name := outputFile
-		if c.test {
+		if strings.HasSuffix(s.Pos.Filename, "_test.go") {
 			name = testOutputFile
 		}
-		r.Writes = append(r.Writes, filepath.Join(filepath.Dir(c.Pos.Filename), name))
-		imports := qualifier.Of(c.File, c.Named.Obj().Pkg())
-		for _, f := range c.fields {
-			if f.source != fromRef || f.ref.pkg == "" {
+		r.Writes = append(r.Writes, filepath.Join(filepath.Dir(s.Pos.Filename), name))
+
+		ctor := defaultCtor(s.Name)
+		declares[s.PkgPath+"."+ctor] = true
+		d, _ = withoutName(d)
+		if args, _ := d.Parse(options); slices.ContainsFunc(args, func(a directive.Arg) bool { return a.Name == "must" }) {
+			declares[s.PkgPath+"."+mustOf(ctor)] = true
+		}
+
+		imports := qualifier.Of(s.File, s.Named.Obj().Pkg())
+		for _, sf := range s.Fields {
+			t, err := parseTag(sf.Tag)
+			if err != nil || t.source != fromRef || t.ref.pkg == "" {
 				continue
 			}
-			if pkg, err := imports.Lookup(f.ref.pkg); err == nil {
-				r.Refs = append(r.Refs, deps.Ref{Package: pkg.Path(), Via: "with=" + f.ref.String()})
+			if pkg, err := imports.Lookup(t.ref.pkg); err == nil {
+				r.Refs = append(r.Refs, deps.Ref{Package: pkg.Path(), Via: "with=" + t.ref.String()})
 			}
 		}
 	}
+	r.Declares = slices.Collect(maps.Keys(declares))
 	return r, nil
 }

@@ -51,3 +51,35 @@ func TestDeps(t *testing.T) {
 		t.Errorf("Refs = %+v, want %+v", r.Refs, want)
 	}
 }
+
+// Before another generator writes the types a container names, they do not
+// resolve, and the run still has its file and constructor written.
+func TestDeps_Unresolved(t *testing.T) {
+	t.Parallel()
+
+	dir := writeModule(t, map[string]string{
+		"impl/impl.go": "package impl\n",
+		"p/p.go": "package p\n\nimport \"example.com/shop/impl\"\n\n" +
+			"//kanna:container must\ntype C struct {\n\t_ impl.Repo `di:\"with=impl.NewRepo\"`\n}\n",
+	})
+
+	code, stdout, stderr := execute(t, filepath.Join(dir, "p"), "-deps")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	var r deps.Report
+	if err := json.Unmarshal([]byte(stdout), &r); err != nil {
+		t.Fatal(err)
+	}
+
+	if want := []string{filepath.Join(dir, "p", "di_gen.go")}; !slices.Equal(r.Writes, want) {
+		t.Errorf("Writes = %q, want %q", r.Writes, want)
+	}
+	if want := []string{"example.com/shop/p.MustNewC", "example.com/shop/p.NewC"}; !slices.Equal(r.Declares, want) {
+		t.Errorf("Declares = %q, want %q", r.Declares, want)
+	}
+	want := []deps.Ref{{Package: "example.com/shop/impl", Via: "with=impl.NewRepo"}}
+	if !slices.Equal(r.Refs, want) {
+		t.Errorf("Refs = %+v, want %+v", r.Refs, want)
+	}
+}
