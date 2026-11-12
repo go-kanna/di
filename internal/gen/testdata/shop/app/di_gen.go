@@ -25,10 +25,15 @@ func newServer() (*server, func(), error) {
 	registerUser := usecase.NewRegisterUser(repo, log)
 	getUser := usecase.NewGetUser(repo)
 	users := handler.NewUser(registerUser, getUser)
+	cleanupAll := func() {
+		if cleanup != nil {
+			cleanup()
+		}
+	}
 
 	return &server{
 		users: users,
-	}, cleanup, nil
+	}, cleanupAll, nil
 }
 
 // newTestServer initializes dependencies and constructs testServer.

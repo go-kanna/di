@@ -27,10 +27,15 @@ func newServer(out io.Writer) (*server, func(), error) {
 	registerUser := usecase.NewRegisterUser(repo, mailer)
 	getUser := usecase.NewGetUser(repo)
 	users := handler.NewUser(registerUser, getUser)
+	cleanupAll := func() {
+		if cleanup != nil {
+			cleanup()
+		}
+	}
 
 	return &server{
 		users: users,
-	}, cleanup, nil
+	}, cleanupAll, nil
 }
 
 // mustNewServer initializes dependencies and constructs server or panics on failure.

@@ -6,10 +6,12 @@ import "fmt"
 
 //go:generate go tool kanna-di
 
-// Log records what the providers did, and names the one that is to fail.
+// Log records what the providers did, names the one that is to fail, and
+// the one that has nothing to close.
 type Log struct {
 	Lines []string
 	Fail  string
+	Bare  string
 }
 
 func (l *Log) open(what string) error {
@@ -21,6 +23,9 @@ func (l *Log) open(what string) error {
 }
 
 func (l *Log) closer(what string) func() {
+	if l.Bare == what {
+		return nil
+	}
 	return func() { l.Lines = append(l.Lines, "close "+what) }
 }
 
@@ -82,6 +87,15 @@ type Stats struct {
 	_ *Log `di:"arg"`
 
 	Queue *Queue
+}
+
+// Store has one provider to clean up after.
+//
+//kanna:container must
+type Store struct {
+	_ *Log `di:"arg"`
+
+	DB *DB
 }
 
 // Starter is an interface a container is returned as.

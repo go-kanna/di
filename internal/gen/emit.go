@@ -172,15 +172,12 @@ func (e *emitter) constructor() {
 	value := !pointer && !types.IsInterface(e.p.c.returns)
 	results := []string{e.literal(e.p.c, !value, e.p.fields)}
 	if e.p.cleanup {
-		cleanup := cleanups[0]
-		if len(cleanups) > 1 {
-			// Set apart from the return: gofmt indents a function literal
-			// after a struct literal in one statement differently from one
-			// release of Go to the next.
-			cleanup = scope.Name("cleanupAll")
-			fmt.Fprintf(e.f, "\t%s := %s\n", cleanup, combined(cleanups))
-			wrote = true
-		}
+		// Set apart from the return: gofmt indents a function literal after a
+		// struct literal in one statement differently from one release of Go
+		// to the next.
+		cleanup := scope.Name("cleanupAll")
+		fmt.Fprintf(e.f, "\t%s := %s\n", cleanup, combined(cleanups))
+		wrote = true
 		results = append(results, cleanup)
 	}
 	if e.p.errs {
@@ -291,7 +288,7 @@ func (e *emitter) call(s step) string {
 }
 
 // unwind writes the return of err, after undoing what the cleanups so far
-// release, the last first.
+// release, the last first, skipping those the providers returned as nil.
 func (e *emitter) unwind(cleanups []string, errName string) {
 	results := []string{e.zero()}
 	if e.p.cleanup {
@@ -301,7 +298,7 @@ func (e *emitter) unwind(cleanups []string, errName string) {
 
 	fmt.Fprintf(e.f, "\tif %s != nil {\n", errName)
 	for _, c := range slices.Backward(cleanups) {
-		fmt.Fprintf(e.f, "\t\t%s()\n", c)
+		fmt.Fprintf(e.f, "\t\tif %s != nil {\n\t\t\t%s()\n\t\t}\n", c, c)
 	}
 	fmt.Fprintf(e.f, "\t\treturn %s\n\t}\n", strings.Join(results, ", "))
 }
@@ -337,12 +334,13 @@ func (e *emitter) typeString(t types.Type) string {
 	return types.TypeString(t, e.f.Qualifier)
 }
 
-// combined writes the cleanup releasing what cleanups do, the last first.
+// combined writes the cleanup releasing what cleanups do, the last first,
+// skipping those the providers returned as nil.
 func combined(cleanups []string) string {
 	var b strings.Builder
 	b.WriteString("func() {\n")
 	for _, c := range slices.Backward(cleanups) {
-		fmt.Fprintf(&b, "%s()\n", c)
+		fmt.Fprintf(&b, "if %s != nil {\n%s()\n}\n", c, c)
 	}
 	b.WriteString("}")
 	return b.String()
