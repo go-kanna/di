@@ -16,9 +16,8 @@ import (
 // reportDeps tells what a run in dir reads and writes. A with= names a package
 // that nothing imports before the generated code does.
 //
-// It reads the directives and tags alone, as a container whose types do not
-// resolve yet, before another generator writes them, still has its file and
-// constructor written.
+// It reads the directives and tags alone: a container whose types resolve only
+// once another generator has run still has its file and constructor written.
 func reportDeps(dir string, cfg config, patterns []string) (deps.Report, error) {
 	set, err := packages.Load(patterns, packages.Config{
 		Dir: dir, Tags: cfg.tags, Tests: true, Regenerated: []string{outputFile, testOutputFile},
