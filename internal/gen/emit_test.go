@@ -101,6 +101,47 @@ func TestGenerated_UndoWhatOpenedBeforeAFailure(t *testing.T) {
 	}
 }
 
+func TestGenerated_SkipNilCleanups(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		log := &run.Log{Bare: "cache"}
+		_, cleanup, err := run.NewApp(log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cleanup()
+		want := []string{"open db", "open cache", "open queue", "close db"}
+		if !slices.Equal(log.Lines, want) {
+			t.Errorf("lines = %q, want %q", log.Lines, want)
+		}
+	})
+	t.Run("failure", func(t *testing.T) {
+		t.Parallel()
+
+		log := &run.Log{Bare: "db", Fail: "queue"}
+		_, _, err := run.NewApp(log)
+		if err == nil || err.Error() != "queue failed" {
+			t.Errorf("err = %v, want the error of queue", err)
+		}
+		want := []string{"open db", "open cache", "close cache"}
+		if !slices.Equal(log.Lines, want) {
+			t.Errorf("lines = %q, want %q", log.Lines, want)
+		}
+	})
+	t.Run("one", func(t *testing.T) {
+		t.Parallel()
+
+		_, cleanup := run.MustNewStore(&run.Log{Bare: "db"})
+		if cleanup == nil {
+			t.Fatal("MustNewStore returned a nil cleanup")
+		}
+		cleanup()
+	})
+}
+
 func TestGenerated_Must(t *testing.T) {
 	t.Parallel()
 

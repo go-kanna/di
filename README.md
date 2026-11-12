@@ -130,10 +130,15 @@ func newServer() (*server, func(), error) {
 	registerUser := usecase.NewRegisterUser(repo, mailer)
 	getUser := usecase.NewGetUser(repo)
 	users := handler.NewUser(registerUser, getUser)
+	cleanupAll := func() {
+		if cleanup != nil {
+			cleanup()
+		}
+	}
 
 	return &server{
 		users: users,
-	}, cleanup, nil
+	}, cleanupAll, nil
 }
 ```
 
@@ -353,11 +358,16 @@ func NewDeleteTodo() (*DeleteTodo, func(), error) {
 	}
 	transactor := deps.Transactor
 	todos := deps.Todos
+	cleanupAll := func() {
+		if cleanup != nil {
+			cleanup()
+		}
+	}
 
 	return &DeleteTodo{
 		transactor: transactor,
 		todos:      todos,
-	}, cleanup, nil
+	}, cleanupAll, nil
 }
 ```
 
@@ -433,13 +443,19 @@ func newServer() (*server, func(), error) {
 	}
 	cache, cleanup2, err := openCache(cfg)
 	if err != nil {
-		cleanup()
+		if cleanup != nil {
+			cleanup()
+		}
 		return nil, nil, err
 	}
 	// ...
 	cleanupAll := func() {
-		cleanup2()
-		cleanup()
+		if cleanup2 != nil {
+			cleanup2()
+		}
+		if cleanup != nil {
+			cleanup()
+		}
 	}
 
 	return &server{
@@ -449,9 +465,10 @@ func newServer() (*server, func(), error) {
 ```
 
 The cleanups run in the reverse of the order their providers ran in. When a provider fails, the cleanups of those that
-ran before it are run before the error is returned. The must variant returns the cleanup as well. What the constructor
-takes as an argument, or finds in a struct it embeds or declares as `_`, belongs to the caller and is never closed;
-neither is anything for implementing `io.Closer`.
+ran before it are run before the error is returned. The must variant returns the cleanup as well. A provider with
+nothing to close may return a nil cleanup. It is not called, and the cleanup the constructor returns is never nil. What
+the constructor takes as an argument, or finds in a struct it embeds or declares as `_`, belongs to the caller and is
+never closed; neither is anything for implementing `io.Closer`.
 
 ## Tests
 

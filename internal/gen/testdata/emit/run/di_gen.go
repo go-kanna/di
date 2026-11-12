@@ -10,19 +10,29 @@ func NewApp(log *Log) (*App, func(), error) {
 	}
 	cache, cleanup2, err := OpenCache(log, db)
 	if err != nil {
-		cleanup()
+		if cleanup != nil {
+			cleanup()
+		}
 		return nil, nil, err
 	}
 	queue, err := OpenQueue(log)
 	if err != nil {
-		cleanup2()
-		cleanup()
+		if cleanup2 != nil {
+			cleanup2()
+		}
+		if cleanup != nil {
+			cleanup()
+		}
 		return nil, nil, err
 	}
 	service := NewService(db, cache, queue)
 	cleanupAll := func() {
-		cleanup2()
-		cleanup()
+		if cleanup2 != nil {
+			cleanup2()
+		}
+		if cleanup != nil {
+			cleanup()
+		}
 	}
 
 	return &App{
@@ -58,6 +68,32 @@ func MustNewStats(log *Log) Stats {
 		panic(err)
 	}
 	return v
+}
+
+// NewStore initializes dependencies and constructs Store.
+func NewStore(log *Log) (*Store, func(), error) {
+	db, cleanup, err := OpenDB(log)
+	if err != nil {
+		return nil, nil, err
+	}
+	cleanupAll := func() {
+		if cleanup != nil {
+			cleanup()
+		}
+	}
+
+	return &Store{
+		DB: db,
+	}, cleanupAll, nil
+}
+
+// MustNewStore initializes dependencies and constructs Store or panics on failure.
+func MustNewStore(log *Log) (*Store, func()) {
+	v, cleanup, err := NewStore(log)
+	if err != nil {
+		panic(err)
+	}
+	return v, cleanup
 }
 
 // NewRunner initializes dependencies and constructs Runner.
