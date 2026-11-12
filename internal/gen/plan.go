@@ -30,6 +30,10 @@ type world struct {
 	// for a container embedding one to build it in place.
 	containers map[string]container
 
+	// marked reports whether a struct of any package the run loads, one it
+	// imports included, is marked //kanna:container.
+	marked func(*types.Named) bool
+
 	// ours are the constructors the run generates; see plans.
 	ours []*ourCtor
 
@@ -208,6 +212,7 @@ func planOf(w *world, c container) (plan, []diag.Diag, []wait) {
 	// A need cut short by an error, or set aside, leaves what it would have
 	// used unmarked.
 	if !diag.HasErrors(pl.diags) && len(pl.waits) == 0 {
+		pl.checkKept()
 		pl.warnUnused()
 	}
 	pl.name()

@@ -378,7 +378,10 @@ the outer container says overrides what the one it builds in place takes. Its `w
 container's own. The value built serves whatever else in the container needs its type, wherever its field is declared.
 That is how a test builds a server with some of its providers replaced, without restating it (see [Tests](#tests)). A
 container of another package is built by its constructor instead, since its unexported fields cannot be set from here,
-and so is a named field of a container type.
+and so is a named field of a container type. If a container of another package keeps a value in an unexported field and
+this container needs a value of that type too, generation stops with an error, since this constructor would make a
+second one. To share the value, keep it in an exported field of that container, or have that container take it with
+`di:"arg"` so this constructor passes its own; for two values, give each a type of its own.
 
 The constructor is named after the struct: `NewServer` for `Server`, and `newServer` for `server`, so that it is
 exported exactly when the struct is. A function of another name, such as one loading the configuration first, is

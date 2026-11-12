@@ -2,13 +2,18 @@ package gen
 
 import (
 	"fmt"
+	"go/token"
 	"go/types"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/go-kanna/internal/diag"
+	"github.com/go-kanna/internal/directive"
+	"github.com/go-kanna/internal/packages"
 	"github.com/go-kanna/internal/qualifier"
+	"github.com/go-kanna/internal/scan"
 )
 
 // embedded is a struct a container embeds, by value or by pointer, without
@@ -387,4 +392,117 @@ func structOf(t types.Type) *types.Struct {
 func hasKey[V any](m map[string]V, k string) bool {
 	_, ok := m[k]
 	return ok
+}
+
+// checkKept reports each container of another package the container embeds
+// and has its constructor build, which keeps a value in a field the container
+// cannot read while the container makes a value of that type itself. The two
+// would be different values, where a container hands out one of a type. A
+// value passed to the constructor is the container's own, and serves both.
+func (pl *planner) checkKept() {
+	for _, e := range pl.embeds {
+		if !e.done || e.step < 0 {
+			continue
+		}
+		s := pl.pl.steps[e.step]
+		n := namedOf(e.f.Type)
+		if s.kind != callStep || n == nil || !pl.w.marked(n) {
+			continue
+		}
+		for _, t := range pl.w.kept(n, map[string]bool{}) {
+			k := typeKey(t)
+			o, ok := pl.byType[k]
+			if hasKey(e.byType, k) || !ok || pl.pl.steps[o].kind == zeroStep || slices.Contains(s.args, o) {
+				continue
+			}
+			pl.diags = append(pl.diags, diag.Errorf(e.f.Pos,
+				"%s keeps a %s of its own that %s cannot read, so %s would make a second one",
+				pl.typeString(n), pl.typeString(t), pl.c.Name, pl.c.ctor).WithHints(
+				fmt.Sprintf("for one %s, have %s keep it in an exported field, which %s then takes it from",
+					pl.typeString(t), pl.typeString(n), pl.c.Name),
+				oneValueHint))
+		}
+	}
+}
+
+// kept returns the types of the values the container n keeps, in the order of
+// its fields: those of its fields but blank ones and those it leaves at their
+// zero value, of the containers it embeds, and of the exported fields of the
+// other structs it embeds. seen holds the containers already looked into.
+func (w *world) kept(n *types.Named, seen map[string]bool) []types.Type {
+	seen[typeKey(n)] = true
+	st, _ := n.Underlying().(*types.Struct)
+	var ts []types.Type
+	for i := range st.NumFields() {
+		v := st.Field(i)
+		if v.Name() == "_" || reflect.StructTag(st.Tag(i)).Get(tagKey) == "-" {
+			continue
+		}
+		ts = append(ts, v.Type())
+		if !v.Embedded() {
+			continue
+		}
+		if sub := namedOf(v.Type()); sub != nil && w.marked(sub) {
+			if !seen[typeKey(sub)] {
+				ts = append(ts, w.kept(sub, seen)...)
+			}
+			continue
+		}
+		byType := promotedOf(v.Type(), n.Obj().Pkg())
+		for _, k := range slices.Sorted(maps.Keys(byType)) {
+			for _, pr := range byType[k] {
+				ts = append(ts, pr.typ)
+			}
+		}
+	}
+	return ts
+}
+
+// namedOf returns the named type t is, or points to, or nil.
+func namedOf(t types.Type) *types.Named {
+	if p, ok := types.Unalias(t).(*types.Pointer); ok {
+		t = p.Elem()
+	}
+	n, _ := types.Unalias(t).(*types.Named)
+	return n
+}
+
+// markedIn returns whether a struct of pkgs, or of a package they import, is
+// marked //kanna:container, as the source the load parsed says. A package
+// read from export data alone has none.
+func markedIn(fset *token.FileSet, pkgs []*packages.Package) func(*types.Named) bool {
+	byPath := make(map[string]*packages.Package)
+	var visit func(*packages.Package)
+	visit = func(p *packages.Package) {
+		if hasKey(byPath, p.PkgPath) {
+			return
+		}
+		byPath[p.PkgPath] = p
+		for _, q := range p.Imports {
+			visit(q)
+		}
+	}
+	for _, p := range pkgs {
+		visit(p)
+	}
+
+	marked := make(map[string]map[string]bool)
+	return func(n *types.Named) bool {
+		if n.Obj().Pkg() == nil {
+			return false
+		}
+		path := n.Obj().Pkg().Path()
+		names, ok := marked[path]
+		if !ok {
+			names = make(map[string]bool)
+			if p := byPath[path]; p != nil {
+				for _, s := range scan.Structs([]*packages.Package{p}) {
+					d, _ := directive.Find(fset, s.Doc, directiveKey)
+					names[s.Name] = d.Found
+				}
+			}
+			marked[path] = names
+		}
+		return names[n.Obj().Name()]
+	}
 }

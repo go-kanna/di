@@ -214,7 +214,7 @@ func planAll(fset *token.FileSet, pkgs []*packages.Package, module string) ([]pl
 	local := func(p *types.Package) bool {
 		return p.Path() == module || strings.HasPrefix(p.Path(), module+"/")
 	}
-	w := &world{x: newIndex(fset), local: local, output: outputOf(pkgs)}
+	w := &world{x: newIndex(fset), local: local, marked: markedIn(fset, pkgs), output: outputOf(pkgs)}
 
 	cs, ds := containers(fset, scan.Structs(pkgs), "", w.output)
 	w.containers = make(map[string]container, len(cs))
