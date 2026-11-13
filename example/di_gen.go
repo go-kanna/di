@@ -4,6 +4,7 @@ package main
 
 import (
 	"io"
+	"slices"
 
 	"github.com/go-kanna/di/example/internal/config"
 	"github.com/go-kanna/di/example/internal/console"
@@ -18,20 +19,24 @@ func newServer(out io.Writer) (*server, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	var cleanups []func()
+	cleanupAll := func() {
+		for _, c := range slices.Backward(cleanups) {
+			c()
+		}
+	}
 	store, cleanup, err := memory.Open(cfg)
 	if err != nil {
 		return nil, nil, err
+	}
+	if cleanup != nil {
+		cleanups = append(cleanups, cleanup)
 	}
 	repo := memory.NewUserRepository(store)
 	mailer := console.NewSender(out)
 	registerUser := usecase.NewRegisterUser(repo, mailer)
 	getUser := usecase.NewGetUser(repo)
 	users := handler.NewUser(registerUser, getUser)
-	cleanupAll := func() {
-		if cleanup != nil {
-			cleanup()
-		}
-	}
 
 	return &server{
 		users: users,

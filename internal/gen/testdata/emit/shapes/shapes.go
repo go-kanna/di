@@ -1,7 +1,8 @@
 // Package shapes holds containers whose generated constructors show the shapes
 // the generator writes: a field of an embedded struct or of a blank one, a
 // container built in place, variables kept clear of the names the package
-// declares, and a parameter named as the package its type comes from.
+// declares, a parameter named as the package its type comes from, and the
+// cleanups gathered clear of those names too.
 package shapes
 
 import (
@@ -130,4 +131,25 @@ type optioned struct {
 	store *Store
 }
 
+// Conn and Pool each come with a cleanup, gathered while the package
+// declares the names the gathering would take.
+type (
+	Conn struct{}
+	Pool struct{}
+)
+
+func openConn() (*Conn, func()) { return &Conn{}, func() {} }
+
+func openPool(*Conn) (*Pool, func(), error) { return &Pool{}, func() {}, nil }
+
+//kanna:container
+type pooled struct {
+	pool *Pool
+}
+
+func slices()     {}
+func cleanups()   {}
+func cleanupAll() {}
+
 var _ = users
+var _, _, _ = slices, cleanups, cleanupAll

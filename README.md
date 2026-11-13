@@ -108,6 +108,8 @@ func openDB(cfg config.Config) (*sql.DB, func(), error) {
 package main
 
 import (
+	"slices"
+
 	"example.com/shop/internal/config"
 	"example.com/shop/internal/handler"
 	"example.com/shop/internal/infra/postgres"
@@ -121,20 +123,24 @@ func newServer() (*server, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	var cleanups []func()
+	cleanupAll := func() {
+		for _, c := range slices.Backward(cleanups) {
+			c()
+		}
+	}
 	db, cleanup, err := openDB(cfg)
 	if err != nil {
 		return nil, nil, err
+	}
+	if cleanup != nil {
+		cleanups = append(cleanups, cleanup)
 	}
 	repo := postgres.NewUserRepository(db)
 	mailer := sendgrid.NewSender(cfg)
 	registerUser := usecase.NewRegisterUser(repo, mailer)
 	getUser := usecase.NewGetUser(repo)
 	users := handler.NewUser(registerUser, getUser)
-	cleanupAll := func() {
-		if cleanup != nil {
-			cleanup()
-		}
-	}
 
 	return &server{
 		users: users,
@@ -352,17 +358,21 @@ type DeleteTodo struct {
 
 ```go
 func NewDeleteTodo() (*DeleteTodo, func(), error) {
+	var cleanups []func()
+	cleanupAll := func() {
+		for _, c := range slices.Backward(cleanups) {
+			c()
+		}
+	}
 	deps, cleanup, err := infra.NewDeps()
 	if err != nil {
 		return nil, nil, err
 	}
+	if cleanup != nil {
+		cleanups = append(cleanups, cleanup)
+	}
 	transactor := deps.Transactor
 	todos := deps.Todos
-	cleanupAll := func() {
-		if cleanup != nil {
-			cleanup()
-		}
-	}
 
 	return &DeleteTodo{
 		transactor: transactor,
@@ -440,26 +450,28 @@ A provider that opens something returns how to close it, and the constructor ret
 ```go
 func newServer() (*server, func(), error) {
 	// ...
+	var cleanups []func()
+	cleanupAll := func() {
+		for _, c := range slices.Backward(cleanups) {
+			c()
+		}
+	}
 	db, cleanup, err := openDB(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	cache, cleanup2, err := openCache(cfg)
+	if cleanup != nil {
+		cleanups = append(cleanups, cleanup)
+	}
+	cache, cleanup, err := openCache(cfg)
 	if err != nil {
-		if cleanup != nil {
-			cleanup()
-		}
+		cleanupAll()
 		return nil, nil, err
 	}
-	// ...
-	cleanupAll := func() {
-		if cleanup2 != nil {
-			cleanup2()
-		}
-		if cleanup != nil {
-			cleanup()
-		}
+	if cleanup != nil {
+		cleanups = append(cleanups, cleanup)
 	}
+	// ...
 
 	return &server{
 		// ...
