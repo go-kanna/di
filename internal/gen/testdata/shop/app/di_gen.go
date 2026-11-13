@@ -3,6 +3,8 @@
 package app
 
 import (
+	"slices"
+
 	"github.com/go-kanna/di/internal/gen/testdata/shop/config"
 	"github.com/go-kanna/di/internal/gen/testdata/shop/handler"
 	"github.com/go-kanna/di/internal/gen/testdata/shop/postgres"
@@ -16,20 +18,24 @@ func newServer() (*server, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	var cleanups []func()
+	cleanupAll := func() {
+		for _, c := range slices.Backward(cleanups) {
+			c()
+		}
+	}
 	db, cleanup, err := openDB(cfg)
 	if err != nil {
 		return nil, nil, err
+	}
+	if cleanup != nil {
+		cleanups = append(cleanups, cleanup)
 	}
 	repo := postgres.NewUserRepository(db)
 	log := newLogger()
 	registerUser := usecase.NewRegisterUser(repo, log)
 	getUser := usecase.NewGetUser(repo)
 	users := handler.NewUser(registerUser, getUser)
-	cleanupAll := func() {
-		if cleanup != nil {
-			cleanup()
-		}
-	}
 
 	return &server{
 		users: users,

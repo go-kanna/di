@@ -3,7 +3,6 @@ package gen
 import (
 	"fmt"
 	"go/types"
-	"slices"
 	"strings"
 
 	"github.com/go-kanna/internal/gofile"
@@ -67,6 +66,9 @@ func importAll(f *gofile.File, p plan) {
 			f.Import(s.p.fn.Pkg().Path(), s.p.fn.Pkg().Name())
 		}
 	}
+	if p.cleanup {
+		f.Import("slices", "slices")
+	}
 }
 
 // emitter writes the constructor of one plan, and its must variant.
@@ -120,7 +122,9 @@ func (e *emitter) constructor() {
 	fmt.Fprintf(e.f, "// %s initializes dependencies and constructs %s.\n", e.p.c.ctor, e.p.c.Name)
 	fmt.Fprintf(e.f, "func %s(%s) %s {\n", e.p.c.ctor, e.signature(), e.results(e.p.cleanup, e.p.errs))
 
-	var cleanups []string
+	// The cleanups that are not nil go into one slice, which cleanupAll
+	// releases on a failure and the caller in the end.
+	var cleanup, cleanups, cleanupAll string
 	uses := e.uses()
 	e.names = make([]string, len(e.p.steps))
 	wrote := false
@@ -143,22 +147,25 @@ func (e *emitter) constructor() {
 
 		switch s.kind {
 		case callStep:
+			// A provider failing returns no cleanup of its own.
+			undo := cleanupAll
 			lhs := []string{e.names[i]}
 			if s.p.cleanup {
-				cleanups = append(cleanups, scope.Name("cleanup"))
-				lhs = append(lhs, cleanups[len(cleanups)-1])
+				if cleanupAll == "" {
+					cleanup, cleanups, cleanupAll = scope.Name("cleanup"), scope.Name("cleanups"), scope.Name("cleanupAll")
+					e.collect(cleanups, cleanupAll)
+				}
+				lhs = append(lhs, cleanup)
 			}
 			if s.p.errs {
 				lhs = append(lhs, errName)
 			}
 			fmt.Fprintf(e.f, "\t%s := %s\n", strings.Join(lhs, ", "), e.call(s))
 			if s.p.errs {
-				// A provider failing returns no cleanup of its own.
-				before := cleanups
-				if s.p.cleanup {
-					before = cleanups[:len(cleanups)-1]
-				}
-				e.unwind(before, errName)
+				e.unwind(undo, errName)
+			}
+			if s.p.cleanup {
+				fmt.Fprintf(e.f, "\tif %s != nil {\n\t\t%s = append(%s, %s)\n\t}\n", cleanup, cleanups, cleanups, cleanup)
 			}
 		case fieldStep:
 			fmt.Fprintf(e.f, "\t%s := %s.%s\n", e.names[i], e.names[s.of], strings.Join(s.path, "."))
@@ -172,13 +179,7 @@ func (e *emitter) constructor() {
 	value := !pointer && !types.IsInterface(e.p.c.returns)
 	results := []string{e.literal(e.p.c, !value, e.p.fields)}
 	if e.p.cleanup {
-		// Set apart from the return: gofmt indents a function literal after a
-		// struct literal in one statement differently from one release of Go
-		// to the next.
-		cleanup := scope.Name("cleanupAll")
-		fmt.Fprintf(e.f, "\t%s := %s\n", cleanup, combined(cleanups))
-		wrote = true
-		results = append(results, cleanup)
+		results = append(results, cleanupAll)
 	}
 	if e.p.errs {
 		results = append(results, "nil")
@@ -287,9 +288,9 @@ func (e *emitter) call(s step) string {
 	return fn + "(" + strings.Join(args, ", ") + ")"
 }
 
-// unwind writes the return of err, after undoing what the cleanups so far
-// release, the last first, skipping those the providers returned as nil.
-func (e *emitter) unwind(cleanups []string, errName string) {
+// unwind writes the return of err, after calling undo, which releases what the
+// providers so far opened, unless none did.
+func (e *emitter) unwind(undo, errName string) {
 	results := []string{e.zero()}
 	if e.p.cleanup {
 		results = append(results, "nil")
@@ -297,10 +298,19 @@ func (e *emitter) unwind(cleanups []string, errName string) {
 	results = append(results, errName)
 
 	fmt.Fprintf(e.f, "\tif %s != nil {\n", errName)
-	for _, c := range slices.Backward(cleanups) {
-		fmt.Fprintf(e.f, "\t\tif %s != nil {\n\t\t\t%s()\n\t\t}\n", c, c)
+	if undo != "" {
+		fmt.Fprintf(e.f, "\t\t%s()\n", undo)
 	}
 	fmt.Fprintf(e.f, "\t\treturn %s\n\t}\n", strings.Join(results, ", "))
+}
+
+// collect declares the slice cleanups and the function cleanupAll, which
+// calls what the slice holds, the last first.
+func (e *emitter) collect(cleanups, cleanupAll string) {
+	backward := e.f.Import("slices", "slices") + ".Backward"
+	fmt.Fprintf(e.f, "\tvar %s []func()\n", cleanups)
+	fmt.Fprintf(e.f, "\t%s := func() {\n", cleanupAll)
+	fmt.Fprintf(e.f, "\t\tfor _, c := range %s(%s) {\n\t\t\tc()\n\t\t}\n\t}\n", backward, cleanups)
 }
 
 // zero writes the value the constructor returns along with an error.
@@ -332,16 +342,4 @@ func (e *emitter) literal(c container, pointer bool, fields []assign) string {
 
 func (e *emitter) typeString(t types.Type) string {
 	return types.TypeString(t, e.f.Qualifier)
-}
-
-// combined writes the cleanup releasing what cleanups do, the last first,
-// skipping those the providers returned as nil.
-func combined(cleanups []string) string {
-	var b strings.Builder
-	b.WriteString("func() {\n")
-	for _, c := range slices.Backward(cleanups) {
-		fmt.Fprintf(&b, "if %s != nil {\n%s()\n}\n", c, c)
-	}
-	b.WriteString("}")
-	return b.String()
 }

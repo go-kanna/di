@@ -4,6 +4,7 @@ package shapes
 
 import (
 	"context"
+	slices2 "slices"
 
 	"github.com/go-kanna/di/internal/gen/testdata/emit/shapes/config"
 )
@@ -108,4 +109,30 @@ func newOptioned() *optioned {
 		repo:  repo,
 		store: store,
 	}
+}
+
+// newPooled initializes dependencies and constructs pooled.
+func newPooled() (*pooled, func(), error) {
+	var cleanups2 []func()
+	cleanupAll2 := func() {
+		for _, c := range slices2.Backward(cleanups2) {
+			c()
+		}
+	}
+	conn, cleanup := openConn()
+	if cleanup != nil {
+		cleanups2 = append(cleanups2, cleanup)
+	}
+	pool, cleanup, err := openPool(conn)
+	if err != nil {
+		cleanupAll2()
+		return nil, nil, err
+	}
+	if cleanup != nil {
+		cleanups2 = append(cleanups2, cleanup)
+	}
+
+	return &pooled{
+		pool: pool,
+	}, cleanupAll2, nil
 }

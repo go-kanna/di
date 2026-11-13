@@ -2,38 +2,39 @@
 
 package run
 
+import (
+	"slices"
+)
+
 // NewApp initializes dependencies and constructs App.
 func NewApp(log *Log) (*App, func(), error) {
+	var cleanups []func()
+	cleanupAll := func() {
+		for _, c := range slices.Backward(cleanups) {
+			c()
+		}
+	}
 	db, cleanup, err := OpenDB(log)
 	if err != nil {
 		return nil, nil, err
 	}
-	cache, cleanup2, err := OpenCache(log, db)
+	if cleanup != nil {
+		cleanups = append(cleanups, cleanup)
+	}
+	cache, cleanup, err := OpenCache(log, db)
 	if err != nil {
-		if cleanup != nil {
-			cleanup()
-		}
+		cleanupAll()
 		return nil, nil, err
+	}
+	if cleanup != nil {
+		cleanups = append(cleanups, cleanup)
 	}
 	queue, err := OpenQueue(log)
 	if err != nil {
-		if cleanup2 != nil {
-			cleanup2()
-		}
-		if cleanup != nil {
-			cleanup()
-		}
+		cleanupAll()
 		return nil, nil, err
 	}
 	service := NewService(db, cache, queue)
-	cleanupAll := func() {
-		if cleanup2 != nil {
-			cleanup2()
-		}
-		if cleanup != nil {
-			cleanup()
-		}
-	}
 
 	return &App{
 		Service: service,
@@ -72,14 +73,18 @@ func MustNewStats(log *Log) Stats {
 
 // NewStore initializes dependencies and constructs Store.
 func NewStore(log *Log) (*Store, func(), error) {
+	var cleanups []func()
+	cleanupAll := func() {
+		for _, c := range slices.Backward(cleanups) {
+			c()
+		}
+	}
 	db, cleanup, err := OpenDB(log)
 	if err != nil {
 		return nil, nil, err
 	}
-	cleanupAll := func() {
-		if cleanup != nil {
-			cleanup()
-		}
+	if cleanup != nil {
+		cleanups = append(cleanups, cleanup)
 	}
 
 	return &Store{
