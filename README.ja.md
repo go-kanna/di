@@ -157,7 +157,7 @@ func main() {
 
 `*usecase.RegisterUser` は、型と同じパッケージにある関数 `usecase.NewRegisterUser` から得られます。`*sql.DB` は、コンテナと同じパッケージにある `openDB` から得られます。ドメインのインターフェースである `user.Repository` と `mail.Sender` は、コンテナが指定した実装から得られます。`config.Config` は一度だけ読み込まれ、`openDB` と `sendgrid.NewSender` で共有されます。登録するものはありません。コンストラクタのパラメータが変わると、次の `go generate` がそれを呼び出すコードを変更します。
 
-kanna の生成器を 2 つ以上使うときは、[`go tool kanna gen`](https://github.com/go-kanna/kanna) で実行してください。このコマンドは、必要な順に生成器を実行します。
+kanna のジェネレータを 2 つ以上使うときは、[`go tool kanna gen`](https://github.com/go-kanna/kanna) で実行してください。このコマンドは、必要な順にジェネレータを実行します。
 
 ## プロバイダ
 
